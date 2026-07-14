@@ -77,14 +77,15 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
     meta: [
       { charSet: "utf-8" },
       { name: "viewport", content: "width=device-width, initial-scale=1" },
-      { title: "Lovable App" },
-      { name: "description", content: "Lovable Generated Project" },
-      { name: "author", content: "Lovable" },
-      { property: "og:title", content: "Lovable App" },
-      { property: "og:description", content: "Lovable Generated Project" },
+      { title: "Farm Naturale — Grow, Learn, Prosper" },
+      { name: "description", content: "Farm Naturale mobile app and web admin: home garden, AI Crop Doctor, marketplace, wallet, and farmer operations." },
+      { name: "author", content: "Farm Naturale" },
+      { name: "theme-color", content: "#0d6b32" },
+      { property: "og:title", content: "Farm Naturale — Grow, Learn, Prosper" },
+      { property: "og:description", content: "Home garden, AI Crop Doctor, consulting, marketplace, wallet and admin — one platform for farmers." },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary_large_image" },
-      { name: "twitter:site", content: "@Lovable" },
+      { name: "twitter:site", content: "@FarmNaturale" },
     ],
     links: [
       {
