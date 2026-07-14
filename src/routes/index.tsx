@@ -1,4 +1,23 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
+import {
+  BadgeCheck,
+  Bot,
+  CalendarDays,
+  Camera,
+  CloudSun,
+  CreditCard,
+  Droplets,
+  GraduationCap,
+  Leaf,
+  MessageCircle,
+  Package,
+  Search,
+  ShoppingCart,
+  Sprout,
+  Stethoscope,
+  UserRound,
+  type LucideIcon,
+} from "lucide-react";
 import { useState } from "react";
 
 import gingerFarm from "@/assets/ginger-farm.jpg";
@@ -311,9 +330,44 @@ function ScreenTitle({
 function Avatar({ children }: { children: React.ReactNode }) {
   return (
     <div className="grid h-[46px] w-[46px] shrink-0 place-items-center rounded-full bg-accent text-[23px]">
-      {children}
+      {renderSymbol(children)}
     </div>
   );
+}
+
+function SymbolIcon({ icon: Icon, className = "h-6 w-6" }: { icon: LucideIcon; className?: string }) {
+  return <Icon className={className} strokeWidth={2.5} aria-hidden />;
+}
+
+function renderSymbol(symbol: React.ReactNode) {
+  if (typeof symbol !== "string") return symbol;
+
+  const iconMap: Record<string, LucideIcon> = {
+    "👩🏾‍🌾": UserRound,
+    "☀️": CloudSun,
+    "📷": Camera,
+    "👩🏾‍💼": UserRound,
+    "🛒": ShoppingCart,
+    "💬": MessageCircle,
+    "📅": CalendarDays,
+    "🍅": Sprout,
+    "🌶️": Leaf,
+    "🫚": Leaf,
+    "💧": Droplets,
+    "🔎": Search,
+    "🤖": Bot,
+    "👨🏾‍⚕️": Stethoscope,
+    "🎓": GraduationCap,
+    "🌱": Sprout,
+    "🪴": Leaf,
+    "🧴": Package,
+    "🧤": Package,
+    "🏅": BadgeCheck,
+    "💳": CreditCard,
+  };
+
+  const Icon = iconMap[symbol];
+  return Icon ? <SymbolIcon icon={Icon} /> : symbol;
 }
 
 function PhotoHero({
@@ -348,7 +402,7 @@ function Card({ children, className = "" }: { children: React.ReactNode; classNa
 function Thumb({ children }: { children: React.ReactNode }) {
   return (
     <div className="grid h-[52px] w-[52px] shrink-0 place-items-center rounded-[13px] bg-accent text-[25px]">
-      {children}
+      {renderSymbol(children)}
     </div>
   );
 }
@@ -493,7 +547,7 @@ function DashboardScreen({ go }: { go: (screen: ScreenId) => void }) {
 
   return (
     <>
-      <ScreenTitle title="Amina Musa 👋" subtitle="Good morning" action={<Avatar>👩🏾‍🌾</Avatar>} />
+      <ScreenTitle title="Amina Musa" subtitle="Good morning" action={<Avatar>👩🏾‍🌾</Avatar>} />
       <p className="-mt-3 mb-3 text-[13px] font-semibold text-muted-foreground">Kaduna, Nigeria</p>
       <Card className="relative overflow-hidden border-0 bg-fn-green-2 p-0 text-primary-foreground">
         <img src={gingerFarm} alt="Commercial ginger farm" className="absolute inset-0 h-full w-full object-cover" />
@@ -523,7 +577,7 @@ function DashboardScreen({ go }: { go: (screen: ScreenId) => void }) {
             className="min-h-[70px] rounded-xl border border-border bg-card px-3 py-3 text-xs font-black transition-colors hover:bg-secondary"
           >
             <span className="mb-1 block text-xl" aria-hidden>
-              {action.icon}
+              {renderSymbol(action.icon)}
             </span>
             {action.label}
           </button>
@@ -599,7 +653,7 @@ function WeatherScreen() {
             <p className="mt-1 text-sm font-semibold text-muted-foreground">Humidity 68% • Wind 9 km/h</p>
           </div>
           <span className="text-[52px]" aria-hidden>
-            ☀️
+            <SymbolIcon icon={CloudSun} className="h-12 w-12" />
           </span>
         </div>
       </Card>
@@ -613,7 +667,7 @@ function WeatherScreen() {
           <div key={day} className="rounded-xl border border-border bg-card px-1 py-2.5 text-center">
             <strong className="block text-xs">{day}</strong>
             <span className="block text-xl" aria-hidden>
-              {icon}
+              {renderSymbol(icon)}
             </span>
             <span className="text-xs font-black">{temp}</span>
           </div>
@@ -637,7 +691,9 @@ function DiagnosisScreen({ go }: { go: (screen: ScreenId) => void }) {
     <>
       <ScreenTitle title="AI Crop Doctor" />
       <Card className="bg-fn-light text-center">
-        <div className="mx-auto grid h-[86px] w-[86px] place-items-center rounded-3xl bg-card text-5xl">🤖</div>
+        <div className="mx-auto grid h-[86px] w-[86px] place-items-center rounded-3xl bg-card text-primary">
+          <SymbolIcon icon={Bot} className="h-12 w-12" />
+        </div>
         <h3 className="mt-3 text-lg font-black">AI Crop Doctor</h3>
         <p className="text-[13px] font-semibold text-muted-foreground">Upload a clear image of the affected plant</p>
       </Card>
@@ -795,7 +851,9 @@ function MarketScreen({ go }: { go: (screen: ScreenId) => void }) {
       <div className="grid grid-cols-2 gap-[9px]">
         {products.map(([icon, title, price, action]) => (
           <div key={title} className="rounded-[14px] border border-border bg-card p-[11px]">
-            <div className="grid h-[75px] place-items-center rounded-xl bg-fn-cream text-[38px]">{icon}</div>
+            <div className="grid h-[75px] place-items-center rounded-xl bg-fn-cream text-primary">
+              {renderSymbol(icon)}
+            </div>
             <strong className="mt-2 block text-sm">{title}</strong>
             <p className="font-black text-primary">{price}</p>
             <SoftButton onClick={title === "Vegetable Seed Pack" ? () => go("product") : undefined}>{action}</SoftButton>
