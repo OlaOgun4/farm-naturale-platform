@@ -67,38 +67,65 @@
   --color-fn-cream: var(--fn-cream);
   --color-fn-light: var(--fn-light);
   --color-fn-line: var(--fn-line);
+  --color-fn-soft-line: var(--fn-soft-line);
   --color-fn-muted: var(--fn-muted);
   --color-fn-text: var(--fn-text);
+  --color-fn-phone: var(--fn-phone);
+  --color-fn-screen: var(--fn-screen);
+  --color-fn-progress: var(--fn-progress);
+  --color-fn-ok: var(--fn-ok);
+  --color-fn-ok-text: var(--fn-ok-text);
+  --color-fn-warn: var(--fn-warn);
+  --color-fn-warn-text: var(--fn-warn-text);
+  --color-fn-danger: var(--fn-danger-soft);
+  --color-fn-danger-text: var(--fn-danger-text);
+  --color-fn-info: var(--fn-info);
+  --color-fn-info-text: var(--fn-info-text);
+  --shadow-fn-panel: var(--shadow-fn-panel);
+  --shadow-fn-phone: var(--shadow-fn-phone);
 }
 
 :root {
   --radius: 0.625rem;
-  --fn-green: #137b3a;
-  --fn-green-2: #0b5a2b;
-  --fn-green-3: #34ad5d;
-  --fn-navy: #12324a;
-  --fn-gold: #d69a21;
-  --fn-cream: #fffaf0;
-  --fn-light: #f3f8f4;
-  --fn-line: #d7e4da;
-  --fn-text: #17251b;
-  --fn-muted: #68776c;
-  --background: #eef5f0;
+  --fn-green: oklch(0.49 0.14 148.5);
+  --fn-green-2: oklch(0.38 0.12 149.8);
+  --fn-green-3: oklch(0.66 0.15 148.4);
+  --fn-navy: oklch(0.31 0.065 239.6);
+  --fn-gold: oklch(0.71 0.14 75.5);
+  --fn-cream: oklch(0.985 0.026 95.3);
+  --fn-light: oklch(0.968 0.017 148.2);
+  --fn-line: oklch(0.902 0.023 148.4);
+  --fn-soft-line: oklch(0.945 0.012 148.8);
+  --fn-text: oklch(0.245 0.035 151.2);
+  --fn-muted: oklch(0.525 0.028 150.5);
+  --fn-phone: oklch(0.15 0.015 151.1);
+  --fn-screen: oklch(0.994 0.006 148.6);
+  --fn-progress: oklch(0.925 0.01 151.1);
+  --fn-ok: oklch(0.94 0.055 149.7);
+  --fn-ok-text: oklch(0.42 0.14 148.7);
+  --fn-warn: oklch(0.94 0.09 86.6);
+  --fn-warn-text: oklch(0.47 0.1 71.4);
+  --fn-danger-soft: oklch(0.93 0.05 24.1);
+  --fn-danger-text: oklch(0.43 0.14 25.2);
+  --fn-info: oklch(0.93 0.04 249.2);
+  --fn-info-text: oklch(0.42 0.11 248.4);
+  --fn-bg: oklch(0.958 0.016 150.2);
+  --background: oklch(0.958 0.016 150.2);
   --foreground: var(--fn-text);
-  --card: #ffffff;
+  --card: oklch(1 0 0);
   --card-foreground: var(--fn-text);
-  --popover: #ffffff;
+  --popover: oklch(1 0 0);
   --popover-foreground: var(--fn-text);
   --primary: var(--fn-green);
-  --primary-foreground: #ffffff;
-  --secondary: #edf4ef;
-  --secondary-foreground: #183420;
-  --muted: #eef5f0;
+  --primary-foreground: oklch(1 0 0);
+  --secondary: oklch(0.956 0.017 149.1);
+  --secondary-foreground: oklch(0.265 0.045 151.8);
+  --muted: oklch(0.958 0.016 150.2);
   --muted-foreground: var(--fn-muted);
-  --accent: #e8f7ed;
+  --accent: oklch(0.956 0.043 149.4);
   --accent-foreground: var(--fn-green-2);
-  --destructive: #bd3434;
-  --destructive-foreground: #ffffff;
+  --destructive: oklch(0.541 0.179 25.2);
+  --destructive-foreground: oklch(1 0 0);
   --border: var(--fn-line);
   --input: var(--fn-line);
   --ring: var(--fn-green);
@@ -108,13 +135,15 @@
   --chart-4: oklch(0.828 0.189 84.429);
   --chart-5: oklch(0.769 0.188 70.08);
   --sidebar: var(--fn-navy);
-  --sidebar-foreground: #ffffff;
+  --sidebar-foreground: oklch(1 0 0);
   --sidebar-primary: var(--fn-green);
-  --sidebar-primary-foreground: #ffffff;
-  --sidebar-accent: rgba(255,255,255,0.08);
-  --sidebar-accent-foreground: #ffffff;
-  --sidebar-border: rgba(255,255,255,0.12);
+  --sidebar-primary-foreground: oklch(1 0 0);
+  --sidebar-accent: oklch(1 0 0 / 8%);
+  --sidebar-accent-foreground: oklch(1 0 0);
+  --sidebar-border: oklch(1 0 0 / 12%);
   --sidebar-ring: var(--fn-green);
+  --shadow-fn-panel: 0 12px 32px oklch(0.31 0.07 148 / 9%);
+  --shadow-fn-phone: 0 20px 50px oklch(0 0 0 / 22%);
 }
 
 .dark {
@@ -150,6 +179,22 @@
   --sidebar-accent-foreground: oklch(0.984 0.003 247.858);
   --sidebar-border: oklch(1 0 0 / 10%);
   --sidebar-ring: oklch(0.551 0.027 264.364);
+}
+
+@utility bg-fn-photo-overlay {
+  background: linear-gradient(180deg, oklch(0 0 0 / 4%), oklch(0.22 0.11 148 / 48%));
+}
+
+@utility bg-fn-card-overlay {
+  background: linear-gradient(90deg, oklch(0.32 0.13 148 / 88%), oklch(0.32 0.13 148 / 28%));
+}
+
+@utility bg-fn-weather-gradient {
+  background: linear-gradient(135deg, oklch(0.955 0.045 149), oklch(0.975 0.065 90));
+}
+
+@utility bg-fn-wallet-gradient {
+  background: linear-gradient(135deg, var(--fn-green), var(--fn-green-3));
 }
 
 @layer base {
