@@ -840,7 +840,7 @@ function DiagnosisScreen() {
   const [busy, setBusy] = useState(false);
   const [dataUrl, setDataUrl] = useState<string | null>(null);
   const [latest, setLatest] = useState<null | {
-    disease: string; confidence: number; severity: string; treatment: string; prevention: string; summary: string;
+    disease: string | null; confidence: number | null; severity: string | null; treatment: string | null; prevention: string | null; summary: string | null;
   }>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
