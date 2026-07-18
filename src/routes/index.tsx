@@ -1144,7 +1144,7 @@ function SellScreen() {
       </div>
 
       <div className="space-y-2 rounded-2xl border border-border bg-card p-3">
-        <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Product name (e.g. Fresh Tomatoes)"
+        <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Product name (e.g. Fresh Ginger Rhizomes)"
           className="w-full rounded-xl border border-border bg-card px-3 py-2 text-sm outline-none focus:border-primary" />
         <div className="grid grid-cols-2 gap-2">
           <select value={category} onChange={(e) => setCategory(e.target.value)}
