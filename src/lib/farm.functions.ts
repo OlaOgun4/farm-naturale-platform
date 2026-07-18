@@ -207,14 +207,14 @@ export const diagnoseCropPhoto = createServerFn({ method: "POST" })
         {
           role: "system",
           content:
-            "You are an expert plant pathologist for smallholder farmers. Analyze the plant photo and reply with STRICT JSON only, matching: {\"disease\":string,\"confidence\":number(0-1),\"severity\":\"mild\"|\"moderate\"|\"severe\"|\"none\",\"treatment\":string,\"prevention\":string,\"summary\":string}. If the plant looks healthy, use disease:\"Healthy\" and severity:\"none\". Keep treatment and prevention practical and organic-first. Do not wrap in code fences.",
+            "You are an expert plant pathologist specializing in ginger (Zingiber officinale) for smallholder farmers in Nigeria. Analyze the plant photo and reply with STRICT JSON only, matching: {\"disease\":string,\"confidence\":number(0-1),\"severity\":\"mild\"|\"moderate\"|\"severe\"|\"none\",\"treatment\":string,\"prevention\":string,\"summary\":string}. If the plant looks healthy, use disease:\"Healthy\" and severity:\"none\". Keep treatment and prevention practical and organic-first, using inputs available to Nigerian smallholder ginger farmers. Do not wrap in code fences.",
         },
         {
           role: "user",
           content: [
             {
               type: "text",
-              text: `Crop context: ${data.crop || "unspecified"}. Diagnose the visible issue and give organic-first treatment and prevention advice for a smallholder farmer in India.`,
+              text: `Crop context: ${data.crop || "Ginger"}. Diagnose the visible issue and give organic-first treatment and prevention advice for a smallholder ginger farmer in Nigeria.`,
             },
             { type: "image_url", image_url: { url: dataUrl } },
           ],
@@ -346,7 +346,7 @@ export const placeOrder = createServerFn({ method: "POST" })
     // Check wallet
     const { data: txs } = await supabase.from("wallet_transactions").select("kind, amount_cents").eq("user_id", userId);
     const balance = (txs ?? []).reduce((s, t) => (t.kind === "credit" ? s + t.amount_cents : s - t.amount_cents), 0);
-    if (balance < total) throw new Error(`Insufficient wallet balance. Need ₹${(total / 100).toFixed(0)}, have ₹${(balance / 100).toFixed(0)}.`);
+    if (balance < total) throw new Error(`Insufficient wallet balance. Need ₦${(total / 100).toFixed(0)}, have ₦${(balance / 100).toFixed(0)}.`);
 
     const { data: order, error: oe } = await supabase
       .from("orders")
@@ -450,7 +450,7 @@ export const submitConsultingRequest = createServerFn({ method: "POST" })
               {
                 role: "system",
                 content:
-                  "You are Priya, a friendly Farm Naturale agronomist. Answer smallholder farmer questions in 3-5 concise sentences, practical and organic-first. Use Indian context.",
+                  "You are Amara, a friendly Farm Naturale agronomist specializing in ginger farming. Answer smallholder farmer questions in 3-5 concise sentences, practical and organic-first. Use Nigerian context and mention Naira (₦) when prices come up.",
               },
               { role: "user", content: `Crop: ${data.crop || "not specified"}. Question: ${data.question}` },
             ],
@@ -738,3 +738,81 @@ export const getAdminOverview = createServerFn({ method: "GET" }).handler(async 
     signups7d: days,
   };
 });
+
+// ---------- Admin: impersonation / farmer detail ----------
+
+export const getFarmerDetail = createServerFn({ method: "GET" })
+  .inputValidator((i: unknown) => z.object({ user_id: z.string().uuid() }).parse(i))
+  .handler(async ({ data }) => {
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const uid = data.user_id;
+    const [
+      { data: profile },
+      { data: gardens },
+      { data: plots },
+      { data: diagnoses },
+      { data: txs },
+      { data: orders },
+      { data: orderItems },
+      { data: consulting },
+      { data: certificates },
+      { data: modules },
+    ] = await Promise.all([
+      supabaseAdmin.from("profiles").select("*").eq("id", uid).maybeSingle(),
+      supabaseAdmin.from("gardens").select("*").eq("user_id", uid).order("created_at", { ascending: false }),
+      supabaseAdmin.from("plots").select("*").eq("user_id", uid).order("created_at", { ascending: false }),
+      supabaseAdmin.from("diagnoses").select("*").eq("user_id", uid).order("created_at", { ascending: false }).limit(20),
+      supabaseAdmin.from("wallet_transactions").select("*").eq("user_id", uid).order("created_at", { ascending: false }).limit(30),
+      supabaseAdmin.from("orders").select("*").eq("buyer_id", uid).order("created_at", { ascending: false }).limit(20),
+      supabaseAdmin.from("order_items").select("*"),
+      supabaseAdmin.from("consulting_requests").select("*").eq("user_id", uid).order("created_at", { ascending: false }).limit(20),
+      supabaseAdmin.from("certificates").select("*").eq("user_id", uid),
+      supabaseAdmin.from("learning_modules").select("id, title"),
+    ]);
+
+    const balance = (txs ?? []).reduce(
+      (s, t) => (t.kind === "credit" ? s + t.amount_cents : s - t.amount_cents),
+      0,
+    );
+
+    const orderIds = new Set((orders ?? []).map((o) => o.id));
+    const itemsByOrder = new Map<string, { title: string; qty: number; unit_price_cents: number }[]>();
+    for (const it of orderItems ?? []) {
+      if (!orderIds.has(it.order_id)) continue;
+      const list = itemsByOrder.get(it.order_id) ?? [];
+      list.push({ title: it.title, qty: it.qty, unit_price_cents: it.unit_price_cents });
+      itemsByOrder.set(it.order_id, list);
+    }
+    const enrichedOrders = (orders ?? []).map((o) => ({
+      ...o,
+      items: itemsByOrder.get(o.id) ?? [],
+    }));
+
+    const modTitle = new Map((modules ?? []).map((m) => [m.id, m.title]));
+    const enrichedCerts = (certificates ?? []).map((c) => ({
+      ...c,
+      module_title: modTitle.get(c.module_id) ?? "Module",
+    }));
+
+    // Signed URLs for diagnosis photos
+    const diagnosesWithUrls = await Promise.all(
+      (diagnoses ?? []).map(async (d) => {
+        const { data: signed } = await supabaseAdmin.storage
+          .from("crop-photos")
+          .createSignedUrl(d.photo_path, 60 * 30);
+        return { ...d, photo_url: signed?.signedUrl ?? null };
+      }),
+    );
+
+    return {
+      profile,
+      wallet_cents: balance,
+      gardens: gardens ?? [],
+      plots: plots ?? [],
+      diagnoses: diagnosesWithUrls,
+      transactions: txs ?? [],
+      orders: enrichedOrders,
+      consulting: consulting ?? [],
+      certificates: enrichedCerts,
+    };
+  });

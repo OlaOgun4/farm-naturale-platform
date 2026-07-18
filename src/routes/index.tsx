@@ -444,7 +444,7 @@ function SidePanel({ screen, me }: { screen: ScreenId; me: { profile: { full_nam
       </div>
       <div className="rounded-xl border border-border bg-fn-cream p-3 text-center">
         <p className="text-[11px] font-bold uppercase tracking-wide text-muted-foreground">Wallet balance</p>
-        <p className="mt-1 text-2xl font-black text-fn-green-2">₹{(me.wallet_cents / 100).toFixed(0)}</p>
+        <p className="mt-1 text-2xl font-black text-fn-green-2">₦{(me.wallet_cents / 100).toFixed(0)}</p>
       </div>
       <h2 className="mt-5 mb-2 text-lg font-black text-fn-green-2">About this screen</h2>
       <p className="rounded-[13px] border-l-4 border-primary bg-fn-light p-4 text-sm leading-6 text-foreground">
@@ -475,8 +475,8 @@ function OnboardingScreen({ initialName }: { initialName: string }) {
     onError: (e) => toast.error(e instanceof Error ? e.message : "Failed to save"),
   });
 
-  const cropOptions = ["Tomato", "Ginger", "Turmeric", "Chilli", "Paddy", "Vegetables", "Fruit trees"];
-  const goalOptions = ["Home consumption", "Sell at market", "Organic certification", "Learn new methods"];
+  const cropOptions = ["Ginger"];
+  const goalOptions = ["Sell at market", "Organic certification", "Learn new methods", "Home consumption"];
   const toggle = (list: string[], v: string, set: (l: string[]) => void) =>
     set(list.includes(v) ? list.filter((x) => x !== v) : [...list, v]);
 
@@ -631,7 +631,7 @@ function DashboardScreen({ go }: { go: (s: ScreenId) => void }) {
         <StatCard label="Gardens" value={data?.gardens ?? 0} />
         <StatCard label="Crops growing" value={data?.growing ?? 0} />
         <StatCard label="Diagnoses" value={data?.recent_diagnoses.length ?? 0} />
-        <StatCard label="Wallet" value={`₹${((data?.wallet_cents ?? 0) / 100).toFixed(0)}`} />
+        <StatCard label="Wallet" value={`₦${((data?.wallet_cents ?? 0) / 100).toFixed(0)}`} />
       </div>
 
       <div className="grid grid-cols-3 gap-2">
@@ -758,15 +758,16 @@ function GardenScreen() {
             </div>
 
             <div className="mt-2 flex gap-2">
-              <input
-                value={newCrop[g.id] ?? ""}
+              <select
+                value={newCrop[g.id] ?? "Ginger"}
                 onChange={(e) => setNewCrop({ ...newCrop, [g.id]: e.target.value })}
-                placeholder="Plant a crop (e.g. Tomato)"
                 className="flex-1 rounded-xl border border-border bg-card px-3 py-1.5 text-xs outline-none focus:border-primary"
-              />
+              >
+                <option value="Ginger">Ginger</option>
+              </select>
               <button
                 onClick={() => {
-                  const crop = newCrop[g.id];
+                  const crop = newCrop[g.id] || "Ginger";
                   if (!crop) return;
                   plant.mutate({ data: { garden_id: g.id, crop } });
                   setNewCrop({ ...newCrop, [g.id]: "" });
@@ -906,12 +907,13 @@ function DiagnosisScreen() {
         ) : null}
       </div>
 
-      <input
-        value={crop}
-        onChange={(e) => setCrop(e.target.value)}
-        placeholder="Which crop? (e.g. Tomato)"
-        className="w-full rounded-xl border border-border bg-card px-3 py-2 text-sm outline-none focus:border-primary"
-      />
+        <select
+          value={crop || "Ginger"}
+          onChange={(e) => setCrop(e.target.value)}
+          className="w-full rounded-xl border border-border bg-card px-3 py-2 text-sm outline-none focus:border-primary"
+        >
+          <option value="Ginger">Ginger</option>
+        </select>
 
       <button
         onClick={run}
@@ -1034,7 +1036,7 @@ function ConsultScreen() {
             <p className="mt-1 text-sm text-foreground">{r.question}</p>
             {r.reply ? (
               <div className="mt-3 rounded-xl bg-fn-light p-3">
-                <p className="text-[11px] font-bold uppercase text-primary">Priya · Agronomist</p>
+                <p className="text-[11px] font-bold uppercase text-primary">Amara · Agronomist</p>
                 <p className="mt-1 text-sm text-foreground">{r.reply}</p>
               </div>
             ) : (
@@ -1096,7 +1098,7 @@ function MarketScreen({ go: _go }: { go: (s: ScreenId) => void }) {
             <p className="mt-2 line-clamp-2 text-[11px] font-extrabold text-fn-green-2">{p.title}</p>
             <p className="text-[10px] text-muted-foreground">{p.category}</p>
             <div className="mt-1 flex items-center justify-between">
-              <span className="text-sm font-black text-fn-navy">₹{(p.price_cents / 100).toFixed(0)}</span>
+              <span className="text-sm font-black text-fn-navy">₦{(p.price_cents / 100).toFixed(0)}</span>
               <button
                 disabled={buy.isPending}
                 onClick={() => buy.mutate({ data: { product_id: p.id, qty: 1 } })}
@@ -1142,7 +1144,7 @@ function SellScreen() {
       </div>
 
       <div className="space-y-2 rounded-2xl border border-border bg-card p-3">
-        <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Product name (e.g. Fresh Tomatoes)"
+        <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Product name (e.g. Fresh Ginger Rhizomes)"
           className="w-full rounded-xl border border-border bg-card px-3 py-2 text-sm outline-none focus:border-primary" />
         <div className="grid grid-cols-2 gap-2">
           <select value={category} onChange={(e) => setCategory(e.target.value)}
@@ -1155,7 +1157,7 @@ function SellScreen() {
           </select>
         </div>
         <div className="grid grid-cols-2 gap-2">
-          <input value={price} onChange={(e) => setPrice(e.target.value)} type="number" placeholder="Price ₹"
+          <input value={price} onChange={(e) => setPrice(e.target.value)} type="number" placeholder="Price ₦"
             className="w-full rounded-xl border border-border bg-card px-3 py-2 text-sm outline-none focus:border-primary" />
           <input value={stock} onChange={(e) => setStock(e.target.value)} type="number" placeholder="Stock qty"
             className="w-full rounded-xl border border-border bg-card px-3 py-2 text-sm outline-none focus:border-primary" />
@@ -1180,7 +1182,7 @@ function SellScreen() {
         </button>
       </div>
       <p className="rounded-xl border border-border bg-fn-cream p-3 text-[11px] text-muted-foreground">
-        Your listing appears on the Marketplace instantly. When another farmer buys it, ₹ get credited to your wallet automatically.
+        Your listing appears on the Marketplace instantly. When another farmer buys it, ₦ get credited to your wallet automatically.
       </p>
     </div>
   );
@@ -1209,7 +1211,7 @@ function WalletScreen() {
 
       <div className="rounded-2xl bg-gradient-to-br from-fn-green-2 to-fn-navy p-4 text-primary-foreground shadow-fn-panel">
         <p className="text-xs font-bold uppercase tracking-wide opacity-80">Available balance</p>
-        <p className="mt-1 text-3xl font-black">₹{((w.data?.balance_cents ?? 0) / 100).toFixed(0)}</p>
+        <p className="mt-1 text-3xl font-black">₦{((w.data?.balance_cents ?? 0) / 100).toFixed(0)}</p>
         <p className="mt-1 text-[11px] opacity-80">Earn more by selling harvest on the marketplace</p>
       </div>
 
@@ -1220,7 +1222,7 @@ function WalletScreen() {
             type="number"
             value={amt}
             onChange={(e) => setAmt(e.target.value)}
-            placeholder="Amount ₹"
+            placeholder="Amount ₦"
             className="flex-1 rounded-xl border border-border bg-card px-3 py-2 text-sm outline-none focus:border-primary"
           />
           <button
@@ -1245,7 +1247,7 @@ function WalletScreen() {
                 </p>
               </div>
               <p className={"text-sm font-black " + (t.kind === "credit" ? "text-primary" : "text-fn-navy")}>
-                {t.kind === "credit" ? "+" : "-"}₹{(t.amount_cents / 100).toFixed(0)}
+                {t.kind === "credit" ? "+" : "-"}₦{(t.amount_cents / 100).toFixed(0)}
               </p>
             </div>
           ))}
@@ -1285,14 +1287,14 @@ function OrdersScreen() {
                   {it.title} × {it.qty}
                 </span>
                 <span className="font-extrabold text-fn-navy">
-                  ₹{((it.unit_price_cents * it.qty) / 100).toFixed(0)}
+                  ₦{((it.unit_price_cents * it.qty) / 100).toFixed(0)}
                 </span>
               </li>
             ))}
           </ul>
           <div className="mt-2 flex items-center justify-between border-t border-border pt-2 text-sm font-black text-fn-green-2">
             <span>Total</span>
-            <span>₹{(o.total_cents / 100).toFixed(0)}</span>
+            <span>₦{(o.total_cents / 100).toFixed(0)}</span>
           </div>
         </div>
       ))}
