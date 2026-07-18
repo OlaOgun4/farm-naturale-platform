@@ -207,14 +207,14 @@ export const diagnoseCropPhoto = createServerFn({ method: "POST" })
         {
           role: "system",
           content:
-            "You are an expert plant pathologist for smallholder farmers. Analyze the plant photo and reply with STRICT JSON only, matching: {\"disease\":string,\"confidence\":number(0-1),\"severity\":\"mild\"|\"moderate\"|\"severe\"|\"none\",\"treatment\":string,\"prevention\":string,\"summary\":string}. If the plant looks healthy, use disease:\"Healthy\" and severity:\"none\". Keep treatment and prevention practical and organic-first. Do not wrap in code fences.",
+            "You are an expert plant pathologist specializing in ginger (Zingiber officinale) for smallholder farmers in Nigeria. Analyze the plant photo and reply with STRICT JSON only, matching: {\"disease\":string,\"confidence\":number(0-1),\"severity\":\"mild\"|\"moderate\"|\"severe\"|\"none\",\"treatment\":string,\"prevention\":string,\"summary\":string}. If the plant looks healthy, use disease:\"Healthy\" and severity:\"none\". Keep treatment and prevention practical and organic-first, using inputs available to Nigerian smallholder ginger farmers. Do not wrap in code fences.",
         },
         {
           role: "user",
           content: [
             {
               type: "text",
-              text: `Crop context: ${data.crop || "unspecified"}. Diagnose the visible issue and give organic-first treatment and prevention advice for a smallholder farmer in India.`,
+              text: `Crop context: ${data.crop || "Ginger"}. Diagnose the visible issue and give organic-first treatment and prevention advice for a smallholder ginger farmer in Nigeria.`,
             },
             { type: "image_url", image_url: { url: dataUrl } },
           ],
@@ -450,7 +450,7 @@ export const submitConsultingRequest = createServerFn({ method: "POST" })
               {
                 role: "system",
                 content:
-                  "You are Priya, a friendly Farm Naturale agronomist. Answer smallholder farmer questions in 3-5 concise sentences, practical and organic-first. Use Indian context.",
+                  "You are Amara, a friendly Farm Naturale agronomist specializing in ginger farming. Answer smallholder farmer questions in 3-5 concise sentences, practical and organic-first. Use Nigerian context and mention Naira (₦) when prices come up.",
               },
               { role: "user", content: `Crop: ${data.crop || "not specified"}. Question: ${data.question}` },
             ],
