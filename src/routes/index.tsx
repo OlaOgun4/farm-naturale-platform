@@ -758,15 +758,16 @@ function GardenScreen() {
             </div>
 
             <div className="mt-2 flex gap-2">
-              <input
-                value={newCrop[g.id] ?? ""}
+              <select
+                value={newCrop[g.id] ?? "Ginger"}
                 onChange={(e) => setNewCrop({ ...newCrop, [g.id]: e.target.value })}
-                placeholder="Plant a crop (e.g. Tomato)"
                 className="flex-1 rounded-xl border border-border bg-card px-3 py-1.5 text-xs outline-none focus:border-primary"
-              />
+              >
+                <option value="Ginger">Ginger</option>
+              </select>
               <button
                 onClick={() => {
-                  const crop = newCrop[g.id];
+                  const crop = newCrop[g.id] || "Ginger";
                   if (!crop) return;
                   plant.mutate({ data: { garden_id: g.id, crop } });
                   setNewCrop({ ...newCrop, [g.id]: "" });
