@@ -738,3 +738,81 @@ export const getAdminOverview = createServerFn({ method: "GET" }).handler(async 
     signups7d: days,
   };
 });
+
+// ---------- Admin: impersonation / farmer detail ----------
+
+export const getFarmerDetail = createServerFn({ method: "GET" })
+  .inputValidator((i: unknown) => z.object({ user_id: z.string().uuid() }).parse(i))
+  .handler(async ({ data }) => {
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const uid = data.user_id;
+    const [
+      { data: profile },
+      { data: gardens },
+      { data: plots },
+      { data: diagnoses },
+      { data: txs },
+      { data: orders },
+      { data: orderItems },
+      { data: consulting },
+      { data: certificates },
+      { data: modules },
+    ] = await Promise.all([
+      supabaseAdmin.from("profiles").select("*").eq("id", uid).maybeSingle(),
+      supabaseAdmin.from("gardens").select("*").eq("user_id", uid).order("created_at", { ascending: false }),
+      supabaseAdmin.from("plots").select("*").eq("user_id", uid).order("created_at", { ascending: false }),
+      supabaseAdmin.from("diagnoses").select("*").eq("user_id", uid).order("created_at", { ascending: false }).limit(20),
+      supabaseAdmin.from("wallet_transactions").select("*").eq("user_id", uid).order("created_at", { ascending: false }).limit(30),
+      supabaseAdmin.from("orders").select("*").eq("buyer_id", uid).order("created_at", { ascending: false }).limit(20),
+      supabaseAdmin.from("order_items").select("*"),
+      supabaseAdmin.from("consulting_requests").select("*").eq("user_id", uid).order("created_at", { ascending: false }).limit(20),
+      supabaseAdmin.from("certificates").select("*").eq("user_id", uid),
+      supabaseAdmin.from("learning_modules").select("id, title"),
+    ]);
+
+    const balance = (txs ?? []).reduce(
+      (s, t) => (t.kind === "credit" ? s + t.amount_cents : s - t.amount_cents),
+      0,
+    );
+
+    const orderIds = new Set((orders ?? []).map((o) => o.id));
+    const itemsByOrder = new Map<string, { title: string; qty: number; unit_price_cents: number }[]>();
+    for (const it of orderItems ?? []) {
+      if (!orderIds.has(it.order_id)) continue;
+      const list = itemsByOrder.get(it.order_id) ?? [];
+      list.push({ title: it.title, qty: it.qty, unit_price_cents: it.unit_price_cents });
+      itemsByOrder.set(it.order_id, list);
+    }
+    const enrichedOrders = (orders ?? []).map((o) => ({
+      ...o,
+      items: itemsByOrder.get(o.id) ?? [],
+    }));
+
+    const modTitle = new Map((modules ?? []).map((m) => [m.id, m.title]));
+    const enrichedCerts = (certificates ?? []).map((c) => ({
+      ...c,
+      module_title: modTitle.get(c.module_id) ?? "Module",
+    }));
+
+    // Signed URLs for diagnosis photos
+    const diagnosesWithUrls = await Promise.all(
+      (diagnoses ?? []).map(async (d) => {
+        const { data: signed } = await supabaseAdmin.storage
+          .from("crop-photos")
+          .createSignedUrl(d.photo_path, 60 * 30);
+        return { ...d, photo_url: signed?.signedUrl ?? null };
+      }),
+    );
+
+    return {
+      profile,
+      wallet_cents: balance,
+      gardens: gardens ?? [],
+      plots: plots ?? [],
+      diagnoses: diagnosesWithUrls,
+      transactions: txs ?? [],
+      orders: enrichedOrders,
+      consulting: consulting ?? [],
+      certificates: enrichedCerts,
+    };
+  });
