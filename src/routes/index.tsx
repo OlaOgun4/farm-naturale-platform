@@ -907,12 +907,13 @@ function DiagnosisScreen() {
         ) : null}
       </div>
 
-      <input
-        value={crop}
-        onChange={(e) => setCrop(e.target.value)}
-        placeholder="Which crop? (e.g. Tomato)"
-        className="w-full rounded-xl border border-border bg-card px-3 py-2 text-sm outline-none focus:border-primary"
-      />
+        <select
+          value={crop || "Ginger"}
+          onChange={(e) => setCrop(e.target.value)}
+          className="w-full rounded-xl border border-border bg-card px-3 py-2 text-sm outline-none focus:border-primary"
+        >
+          <option value="Ginger">Ginger</option>
+        </select>
 
       <button
         onClick={run}
