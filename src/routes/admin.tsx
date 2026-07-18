@@ -1,5 +1,12 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
+import { useSuspenseQuery, queryOptions } from "@tanstack/react-query";
 import { useState } from "react";
+import { getAdminOverview } from "@/lib/farm.functions";
+
+const overviewQueryOptions = queryOptions({
+  queryKey: ["admin-overview"],
+  queryFn: () => getAdminOverview(),
+});
 
 export const Route = createFileRoute("/admin")({
   head: () => ({
@@ -13,45 +20,47 @@ export const Route = createFileRoute("/admin")({
       { property: "og:title", content: "Farm Naturale — Web Admin" },
       {
         property: "og:description",
-        content:
-          "Platform operations and performance for the Farm Naturale network.",
+        content: "Platform operations and performance for the Farm Naturale network.",
       },
     ],
   }),
+  loader: ({ context }) => context.queryClient.ensureQueryData(overviewQueryOptions),
+  errorComponent: ({ error }) => (
+    <div className="p-8 text-sm text-red-700">Failed to load admin data: {String(error?.message ?? error)}</div>
+  ),
+  notFoundComponent: () => <div className="p-8">Not found.</div>,
   component: AdminView,
 });
 
 type WebScreen =
   | "dashboard"
+  | "farmers"
   | "gardens"
   | "consult"
   | "diagnostics"
-  | "community"
-  | "learning"
   | "market"
-  | "inventory"
-  | "farmers"
   | "finance"
-  | "certificates"
-  | "reports";
+  | "learning";
 
 const NAV: { id: WebScreen; label: string }[] = [
   { id: "dashboard", label: "Executive Dashboard" },
+  { id: "farmers", label: "Farmers" },
   { id: "gardens", label: "Home Gardens" },
   { id: "consult", label: "Consultations" },
   { id: "diagnostics", label: "Crop Diagnostics" },
-  { id: "community", label: "Community" },
-  { id: "learning", label: "Learning" },
   { id: "market", label: "Marketplace" },
-  { id: "inventory", label: "Inventory" },
-  { id: "farmers", label: "Farmers" },
   { id: "finance", label: "Finance" },
-  { id: "certificates", label: "Certifications" },
-  { id: "reports", label: "Analytics" },
+  { id: "learning", label: "Learning" },
 ];
+
+function rupees(cents: number) {
+  const rupees = Math.round(cents / 100);
+  return "₹" + rupees.toLocaleString("en-IN");
+}
 
 function AdminView() {
   const [active, setActive] = useState<WebScreen>("dashboard");
+  const { data } = useSuspenseQuery(overviewQueryOptions);
   const current = NAV.find((n) => n.id === active)!;
 
   return (
@@ -112,67 +121,45 @@ function AdminView() {
             <div>
               <strong className="text-xl">{current.label}</strong>
               <p className="mt-1 text-sm text-[color:var(--fn-muted)]">
-                Platform operations and performance
+                Live data from the Farm Naturale mobile app
               </p>
             </div>
             <span className="text-sm text-[color:var(--fn-muted)]">
-              Admin User • All Regions • July 2026
+              Admin • {data.kpis.farmers} farmers on platform
             </span>
           </div>
 
-          <WebPanel screen={active} />
+          <WebPanel screen={active} data={data} />
         </section>
       </main>
     </div>
   );
 }
 
-function Kpi({
-  label,
-  value,
-}: {
-  label: string;
-  value: string;
-}) {
+function Kpi({ label, value }: { label: string; value: string }) {
   return (
     <div className="rounded-2xl border border-[color:var(--fn-line)] bg-white p-4">
       <span className="block text-xs text-[color:var(--fn-muted)]">{label}</span>
-      <b className="mt-1.5 block text-2xl text-[color:var(--fn-green)]">
-        {value}
-      </b>
+      <b className="mt-1.5 block text-2xl text-[color:var(--fn-green)]">{value}</b>
     </div>
   );
 }
 
-function Panel({
-  title,
-  children,
-}: {
-  title: string;
-  children: React.ReactNode;
-}) {
+function Panel({ title, children, empty }: { title: string; children: React.ReactNode; empty?: boolean }) {
   return (
     <div className="rounded-2xl border border-[color:var(--fn-line)] bg-white p-4">
       <h3 className="mb-2 text-base font-bold">{title}</h3>
-      {children}
+      {empty ? <p className="py-4 text-center text-sm text-[color:var(--fn-muted)]">No data yet — try the mobile app.</p> : children}
     </div>
   );
 }
 
-function Row({
-  left,
-  right,
-  status,
-}: {
-  left: string;
-  right?: string;
-  status?: string;
-}) {
+function Row({ left, right, status }: { left: React.ReactNode; right?: React.ReactNode; status?: string }) {
   return (
     <div className="flex items-center justify-between gap-2.5 border-b border-[#edf2ee] py-2.5 text-sm last:border-b-0">
-      <span>{left}</span>
+      <span className="min-w-0 flex-1 truncate">{left}</span>
       <span className="flex items-center gap-2">
-        {right && <span>{right}</span>}
+        {right !== undefined && <span className="text-[color:var(--fn-muted)]">{right}</span>}
         {status && (
           <span className="rounded-full bg-[#e8f7ed] px-2 py-1 text-[11px] font-bold text-[color:var(--fn-green)]">
             {status}
@@ -183,55 +170,124 @@ function Row({
   );
 }
 
-function WebPanel({ screen }: { screen: WebScreen }) {
+type OverviewData = Awaited<ReturnType<typeof getAdminOverview>>;
+
+function WebPanel({ screen, data }: { screen: WebScreen; data: OverviewData }) {
   if (screen === "dashboard") {
+    const maxSignups = Math.max(1, ...data.signups7d.map((d) => d.count));
     return (
       <>
         <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
-          <Kpi label="Active farmers" value="3,842" />
-          <Kpi label="Home gardens" value="1,206" />
-          <Kpi label="Consultations this month" value="284" />
-          <Kpi label="Marketplace GMV" value="₦58.4M" />
+          <Kpi label="Registered farmers" value={String(data.kpis.farmers)} />
+          <Kpi label="Home gardens" value={String(data.kpis.gardens)} />
+          <Kpi label="Crops growing" value={String(data.kpis.plots_growing)} />
+          <Kpi label="Marketplace GMV" value={rupees(data.kpis.gmv_cents)} />
+        </div>
+        <div className="mt-3 grid grid-cols-2 gap-3 md:grid-cols-4">
+          <Kpi label="AI diagnoses" value={String(data.kpis.diagnoses)} />
+          <Kpi label="Orders placed" value={String(data.kpis.orders)} />
+          <Kpi label="Certificates issued" value={String(data.kpis.certificates)} />
+          <Kpi label="Open consultations" value={String(data.kpis.consulting_open)} />
         </div>
         <div className="mt-4 grid grid-cols-1 gap-3 lg:grid-cols-[1.3fr_1fr]">
-          <Panel title="Advisory volume (last 7 days)">
+          <Panel title="New signups (last 7 days)">
             <div className="flex h-40 items-end gap-2 rounded-xl bg-gradient-to-b from-[#eef8f0] to-white p-4">
-              {[42, 55, 38, 68, 74, 61, 82].map((h, i) => (
-                <div
-                  key={i}
-                  className="w-6 rounded-t-md bg-[color:var(--fn-green)]"
-                  style={{ height: `${h}%` }}
-                />
+              {data.signups7d.map((d, i) => (
+                <div key={i} className="flex flex-1 flex-col items-center justify-end gap-1">
+                  <div
+                    className="w-full rounded-t-md bg-[color:var(--fn-green)]"
+                    style={{ height: `${(d.count / maxSignups) * 100}%`, minHeight: d.count > 0 ? 6 : 2 }}
+                    title={`${d.count} signups`}
+                  />
+                  <span className="text-[10px] text-[color:var(--fn-muted)]">{d.day}</span>
+                </div>
               ))}
             </div>
           </Panel>
-          <Panel title="Regional performance">
-            <Row left="North West" right="1,240 farmers" status="On track" />
-            <Row left="South West" right="932 farmers" status="On track" />
-            <Row left="North Central" right="710 farmers" status="Watch" />
-            <Row left="South East" right="486 farmers" status="On track" />
+          <Panel title="Regions / villages" empty={data.regions.length === 0}>
+            {data.regions.map((r) => (
+              <Row key={r.village} left={r.village} right={`${r.count} farmer${r.count === 1 ? "" : "s"}`} />
+            ))}
           </Panel>
         </div>
       </>
     );
   }
 
+  if (screen === "farmers") {
+    return (
+      <Panel title="All farmers on the platform" empty={data.farmers.length === 0}>
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead className="text-left text-xs uppercase text-[color:var(--fn-muted)]">
+              <tr>
+                <th className="py-2">Name</th>
+                <th>Village</th>
+                <th>Land</th>
+                <th>Gardens</th>
+                <th>Growing</th>
+                <th>Wallet</th>
+                <th>Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              {data.farmers.map((f) => (
+                <tr key={f.id} className="border-t border-[#edf2ee]">
+                  <td className="py-2 font-semibold">{f.full_name}</td>
+                  <td>{f.village}</td>
+                  <td>{f.land_size_acres ? `${f.land_size_acres} ac` : "—"}</td>
+                  <td>{f.gardens}</td>
+                  <td>{f.growing}/{f.plots}</td>
+                  <td>{rupees(f.wallet_cents)}</td>
+                  <td>
+                    <span className={"rounded-full px-2 py-1 text-[11px] font-bold " + (f.onboarded ? "bg-[#e8f7ed] text-[color:var(--fn-green)]" : "bg-amber-100 text-amber-700")}>
+                      {f.onboarded ? "Verified" : "Pending"}
+                    </span>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </Panel>
+    );
+  }
+
   if (screen === "gardens") {
     return (
-      <Panel title="Active home gardens">
-        <Row left="Amina Musa • Kaduna" right="4 crops" status="Healthy" />
-        <Row left="Chika Okoro • Enugu" right="3 crops" status="Healthy" />
-        <Row left="Kemi Ade • Lagos" right="5 crops" status="Attention" />
+      <Panel title="Home gardens" empty={data.gardensList.length === 0}>
+        {data.gardensList.map((g) => (
+          <Row
+            key={g.id}
+            left={
+              <>
+                <span className="font-semibold">{g.owner}</span>
+                <span className="text-[color:var(--fn-muted)]"> • {g.name} • {g.location}</span>
+              </>
+            }
+            right={g.crops.length ? g.crops.join(", ") : "no crops yet"}
+            status={g.growing > 0 ? `${g.growing} growing` : undefined}
+          />
+        ))}
       </Panel>
     );
   }
 
   if (screen === "consult") {
     return (
-      <Panel title="Upcoming consultations">
-        <Row left="Dr. Adebayo • Crop Health" right="15 Jul, 10:00" status="Confirmed" />
-        <Row left="Mrs. Okeke • Home Gardening" right="16 Jul, 14:00" status="Confirmed" />
-        <Row left="Dr. Adebayo • Commercial" right="18 Jul, 11:00" status="Pending" />
+      <Panel title="Consultation requests" empty={data.consultingQueue.length === 0}>
+        {data.consultingQueue.map((c) => (
+          <div key={c.id} className="border-b border-[#edf2ee] py-3 last:border-b-0">
+            <div className="flex items-center justify-between text-sm">
+              <span className="font-semibold">{c.farmer} <span className="text-[color:var(--fn-muted)]">• {c.crop}</span></span>
+              <span className={"rounded-full px-2 py-1 text-[11px] font-bold " + (c.replied ? "bg-[#e8f7ed] text-[color:var(--fn-green)]" : "bg-amber-100 text-amber-700")}>
+                {c.replied ? "Replied" : "Awaiting"}
+              </span>
+            </div>
+            <p className="mt-1 text-sm">{c.question}</p>
+            {c.reply && <p className="mt-1 text-xs text-[color:var(--fn-muted)]">→ {c.reply}</p>}
+          </div>
+        ))}
       </Panel>
     );
   }
@@ -239,115 +295,89 @@ function WebPanel({ screen }: { screen: WebScreen }) {
   if (screen === "diagnostics") {
     return (
       <div className="grid gap-3 md:grid-cols-2">
-        <Panel title="Top detected issues">
-          <Row left="Nitrogen deficiency" right="184 cases" />
-          <Row left="Aphid infestation" right="122 cases" />
-          <Row left="Fungal leaf spot" right="93 cases" />
+        <Panel title="Top detected issues" empty={data.topDiseases.length === 0}>
+          {data.topDiseases.map((d) => (
+            <Row key={d.disease} left={d.disease} right={`${d.count} case${d.count === 1 ? "" : "s"}`} />
+          ))}
         </Panel>
-        <Panel title="Escalations to agronomist">
-          <Row left="Awaiting expert" right="14" status="Priority" />
-          <Row left="Resolved this week" right="47" status="Closed" />
+        <Panel title="Recent diagnoses" empty={data.recentDiagnoses.length === 0}>
+          {data.recentDiagnoses.map((d) => (
+            <Row
+              key={d.id}
+              left={
+                <>
+                  <span className="font-semibold">{d.farmer}</span>
+                  <span className="text-[color:var(--fn-muted)]"> • {d.crop}</span>
+                </>
+              }
+              right={d.disease}
+              status={d.severity && d.severity !== "none" ? d.severity : undefined}
+            />
+          ))}
         </Panel>
       </div>
-    );
-  }
-
-  if (screen === "community") {
-    return (
-      <Panel title="Trending discussions">
-        <Row left="Best natural treatment for aphids" right="24 replies" />
-        <Row left="Ginger yield in small plots" right="18 replies" />
-        <Row left="Composting kitchen waste" right="12 replies" />
-      </Panel>
-    );
-  }
-
-  if (screen === "learning") {
-    return (
-      <Panel title="Course engagement">
-        <Row left="Home Gardening Essentials" right="1,204 learners" status="Live" />
-        <Row left="Ginger Production" right="612 learners" status="Live" />
-        <Row left="Commercial Farming 101" right="341 learners" status="Draft" />
-      </Panel>
     );
   }
 
   if (screen === "market") {
     return (
       <div className="grid gap-3 md:grid-cols-2">
-        <Panel title="Top products">
-          <Row left="Home Garden Starter Pack" right="₦22,500 • 412 sold" />
-          <Row left="Organic Compost" right="₦12,000 • 386 sold" />
-          <Row left="Vegetable Seed Kit" right="₦4,800 • 271 sold" />
+        <Panel title="Top products" empty={data.topProducts.length === 0}>
+          {data.topProducts.map((p) => (
+            <Row
+              key={p.id}
+              left={<><span className="font-semibold">{p.title}</span> <span className="text-[color:var(--fn-muted)]">• {p.category}</span></>}
+              right={`${rupees(p.price_cents)} • ${p.sold} sold`}
+            />
+          ))}
         </Panel>
-        <Panel title="Buy-back queue">
-          <Row left="Fresh ginger • 500 kg" right="₦600,000" status="Pending" />
-          <Row left="Tomato • 220 kg" right="₦132,000" status="Approved" />
+        <Panel title="Recent orders" empty={data.recentOrders.length === 0}>
+          {data.recentOrders.map((o) => (
+            <Row
+              key={o.id}
+              left={
+                <>
+                  <span className="font-semibold">{o.farmer}</span>
+                  <span className="text-[color:var(--fn-muted)]"> • {o.items.map((i) => `${i.title} ×${i.qty}`).join(", ") || "—"}</span>
+                </>
+              }
+              right={rupees(o.total_cents)}
+              status={o.status}
+            />
+          ))}
         </Panel>
       </div>
-    );
-  }
-
-  if (screen === "inventory") {
-    return (
-      <Panel title="Stock levels">
-        <Row left="Organic compost" right="820 bags" status="Healthy" />
-        <Row left="Vegetable seeds" right="42 packs" status="Low" />
-        <Row left="Nursery bags" right="1,240 units" status="Healthy" />
-      </Panel>
-    );
-  }
-
-  if (screen === "farmers") {
-    return (
-      <Panel title="Recently onboarded">
-        <Row left="Amina Musa • Kaduna" right="1.2 ha" status="Verified" />
-        <Row left="Chika Okoro • Enugu" right="0.8 ha" status="Verified" />
-        <Row left="Kemi Ade • Lagos" right="0.3 ha" status="Pending" />
-      </Panel>
     );
   }
 
   if (screen === "finance") {
     return (
-      <div className="grid gap-3 md:grid-cols-3">
-        <Kpi label="Wallet balance total" value="₦92.4M" />
-        <Kpi label="Payouts this month" value="₦17.1M" />
-        <Kpi label="Buy-back spend" value="₦12.8M" />
-      </div>
-    );
-  }
-
-  if (screen === "certificates") {
-    return (
-      <Panel title="Issued credentials">
-        <Row left="Home Gardening Essentials" right="612 issued" />
-        <Row left="Ginger Production" right="184 issued" />
-        <Row left="Commercial Farming 101" right="58 issued" />
-      </Panel>
-    );
-  }
-
-  // reports
-  return (
-    <div className="grid gap-3 md:grid-cols-2">
-      <Panel title="Farmer growth (YoY)">
-        <div className="flex h-40 items-end gap-2 rounded-xl bg-gradient-to-b from-[#eef8f0] to-white p-4">
-          {[30, 42, 51, 58, 66, 74, 82, 88].map((h, i) => (
-            <div
-              key={i}
-              className="w-5 rounded-t-md bg-[color:var(--fn-green)]"
-              style={{ height: `${h}%` }}
-            />
-          ))}
+      <>
+        <div className="grid gap-3 md:grid-cols-3">
+          <Kpi label="Wallet balance total" value={rupees(data.kpis.wallet_total_cents)} />
+          <Kpi label="Payouts requested" value={rupees(data.kpis.payouts_cents)} />
+          <Kpi label="Marketplace GMV" value={rupees(data.kpis.gmv_cents)} />
         </div>
-      </Panel>
-      <Panel title="Revenue mix">
-        <Row left="Marketplace" right="52%" />
-        <Row left="Consulting" right="21%" />
-        <Row left="Learning" right="14%" />
-        <Row left="Buy-back services" right="13%" />
-      </Panel>
-    </div>
+        <div className="mt-4">
+          <Panel title="Top wallet balances" empty={data.farmers.length === 0}>
+            {[...data.farmers]
+              .sort((a, b) => b.wallet_cents - a.wallet_cents)
+              .slice(0, 8)
+              .map((f) => (
+                <Row key={f.id} left={<><span className="font-semibold">{f.full_name}</span> <span className="text-[color:var(--fn-muted)]"> • {f.village}</span></>} right={rupees(f.wallet_cents)} />
+              ))}
+          </Panel>
+        </div>
+      </>
+    );
+  }
+
+  // learning
+  return (
+    <Panel title="Learning modules & certificates" empty={data.learning.length === 0}>
+      {data.learning.map((m) => (
+        <Row key={m.id} left={m.title} right={`${m.issued} certificate${m.issued === 1 ? "" : "s"} issued`} />
+      ))}
+    </Panel>
   );
 }

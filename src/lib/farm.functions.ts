@@ -515,3 +515,226 @@ export const completeModule = createServerFn({ method: "POST" })
     if (error) throw new Error(error.message);
     return cert;
   });
+
+// ---------- Admin overview (aggregate, demo) ----------
+
+export const getAdminOverview = createServerFn({ method: "GET" }).handler(async () => {
+  const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+  const [
+    { data: profiles },
+    { data: gardens },
+    { data: plots },
+    { data: diagnoses },
+    { data: orders },
+    { data: orderItems },
+    { data: products },
+    { data: txs },
+    { data: consulting },
+    { data: certificates },
+    { data: modules },
+  ] = await Promise.all([
+    supabaseAdmin.from("profiles").select("id, full_name, village, land_size_acres, phone, created_at, onboarded").order("created_at", { ascending: false }),
+    supabaseAdmin.from("gardens").select("id, user_id, name, size_sqm, location, created_at"),
+    supabaseAdmin.from("plots").select("id, user_id, garden_id, crop, status, created_at"),
+    supabaseAdmin.from("diagnoses").select("id, user_id, crop, disease, severity, confidence, created_at").order("created_at", { ascending: false }),
+    supabaseAdmin.from("orders").select("id, buyer_id, total_cents, status, created_at").order("created_at", { ascending: false }),
+    supabaseAdmin.from("order_items").select("order_id, product_id, title, qty, unit_price_cents"),
+    supabaseAdmin.from("products").select("id, title, category, price_cents, unit, stock, seller_id"),
+    supabaseAdmin.from("wallet_transactions").select("user_id, kind, amount_cents, reason, created_at"),
+    supabaseAdmin.from("consulting_requests").select("id, user_id, question, crop, reply, replied_at, created_at").order("created_at", { ascending: false }),
+    supabaseAdmin.from("certificates").select("id, user_id, module_id, issued_at, code"),
+    supabaseAdmin.from("learning_modules").select("id, title"),
+  ]);
+
+  const profileById = new Map((profiles ?? []).map((p) => [p.id, p]));
+  const moduleById = new Map((modules ?? []).map((m) => [m.id, m]));
+
+  const walletTotal = (txs ?? []).reduce((s, t) => (t.kind === "credit" ? s + t.amount_cents : s - t.amount_cents), 0);
+  const gmv = (orders ?? []).reduce((s, o) => s + (o.total_cents ?? 0), 0);
+  const payouts = (txs ?? []).filter((t) => t.kind === "payout").reduce((s, t) => s + t.amount_cents, 0);
+
+  // Disease frequency
+  const diseaseCounts = new Map<string, number>();
+  for (const d of diagnoses ?? []) {
+    if (!d.disease || d.disease === "Healthy") continue;
+    diseaseCounts.set(d.disease, (diseaseCounts.get(d.disease) ?? 0) + 1);
+  }
+  const topDiseases = [...diseaseCounts.entries()]
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 6)
+    .map(([disease, count]) => ({ disease, count }));
+
+  // Region rollup by village
+  const villageCounts = new Map<string, number>();
+  for (const p of profiles ?? []) {
+    const v = (p.village || "").trim() || "Unspecified";
+    villageCounts.set(v, (villageCounts.get(v) ?? 0) + 1);
+  }
+  const regions = [...villageCounts.entries()]
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 8)
+    .map(([village, count]) => ({ village, count }));
+
+  // Farmers list with rollups
+  const gardensByUser = new Map<string, number>();
+  for (const g of gardens ?? []) gardensByUser.set(g.user_id, (gardensByUser.get(g.user_id) ?? 0) + 1);
+  const plotsByUser = new Map<string, { total: number; growing: number; crops: Set<string> }>();
+  for (const pl of plots ?? []) {
+    const cur = plotsByUser.get(pl.user_id) ?? { total: 0, growing: 0, crops: new Set<string>() };
+    cur.total++;
+    if (pl.status === "growing") cur.growing++;
+    if (pl.crop) cur.crops.add(pl.crop);
+    plotsByUser.set(pl.user_id, cur);
+  }
+  const walletByUser = new Map<string, number>();
+  for (const t of txs ?? []) {
+    const cur = walletByUser.get(t.user_id) ?? 0;
+    walletByUser.set(t.user_id, cur + (t.kind === "credit" ? t.amount_cents : -t.amount_cents));
+  }
+  const diagByUser = new Map<string, number>();
+  for (const d of diagnoses ?? []) diagByUser.set(d.user_id, (diagByUser.get(d.user_id) ?? 0) + 1);
+
+  const farmers = (profiles ?? []).map((p) => {
+    const pl = plotsByUser.get(p.id);
+    return {
+      id: p.id,
+      full_name: p.full_name || "Unnamed farmer",
+      village: p.village || "—",
+      land_size_acres: p.land_size_acres ?? 0,
+      phone: p.phone || "",
+      onboarded: !!p.onboarded,
+      gardens: gardensByUser.get(p.id) ?? 0,
+      plots: pl?.total ?? 0,
+      growing: pl?.growing ?? 0,
+      crops: pl ? [...pl.crops] : [],
+      wallet_cents: walletByUser.get(p.id) ?? 0,
+      diagnoses: diagByUser.get(p.id) ?? 0,
+      created_at: p.created_at,
+    };
+  });
+
+  // Recent diagnostics with farmer name
+  const recentDiagnoses = (diagnoses ?? []).slice(0, 10).map((d) => ({
+    id: d.id,
+    farmer: profileById.get(d.user_id)?.full_name || "Farmer",
+    village: profileById.get(d.user_id)?.village || "—",
+    crop: d.crop || "—",
+    disease: d.disease,
+    severity: d.severity,
+    confidence: d.confidence,
+    created_at: d.created_at,
+  }));
+
+  // Recent orders with farmer + items
+  const itemsByOrder = new Map<string, { title: string; qty: number }[]>();
+  for (const it of orderItems ?? []) {
+    const list = itemsByOrder.get(it.order_id) ?? [];
+    list.push({ title: it.title, qty: it.qty });
+    itemsByOrder.set(it.order_id, list);
+  }
+  const recentOrders = (orders ?? []).slice(0, 10).map((o) => ({
+    id: o.id,
+    farmer: profileById.get(o.buyer_id)?.full_name || "Farmer",
+    village: profileById.get(o.buyer_id)?.village || "—",
+    total_cents: o.total_cents,
+    status: o.status,
+    items: itemsByOrder.get(o.id) ?? [],
+    created_at: o.created_at,
+  }));
+
+  // Product performance
+  const soldByProduct = new Map<string, { qty: number; revenue_cents: number }>();
+  for (const it of orderItems ?? []) {
+    const cur = soldByProduct.get(it.product_id) ?? { qty: 0, revenue_cents: 0 };
+    cur.qty += it.qty;
+    cur.revenue_cents += it.qty * it.unit_price_cents;
+    soldByProduct.set(it.product_id, cur);
+  }
+  const topProducts = (products ?? [])
+    .map((p) => ({
+      id: p.id,
+      title: p.title,
+      category: p.category,
+      price_cents: p.price_cents,
+      unit: p.unit,
+      stock: p.stock,
+      sold: soldByProduct.get(p.id)?.qty ?? 0,
+      revenue_cents: soldByProduct.get(p.id)?.revenue_cents ?? 0,
+    }))
+    .sort((a, b) => b.sold - a.sold)
+    .slice(0, 8);
+
+  // Gardens with owner
+  const gardensList = (gardens ?? []).slice(0, 12).map((g) => {
+    const pl = plotsByUser.get(g.user_id);
+    return {
+      id: g.id,
+      name: g.name,
+      location: g.location || profileById.get(g.user_id)?.village || "—",
+      owner: profileById.get(g.user_id)?.full_name || "Farmer",
+      size_sqm: g.size_sqm,
+      crops: pl ? [...pl.crops].slice(0, 4) : [],
+      growing: pl?.growing ?? 0,
+    };
+  });
+
+  // Consulting queue with farmer name
+  const consultingQueue = (consulting ?? []).slice(0, 10).map((c) => ({
+    id: c.id,
+    farmer: profileById.get(c.user_id)?.full_name || "Farmer",
+    question: c.question,
+    crop: c.crop || "—",
+    replied: !!c.replied_at,
+    reply: c.reply,
+    created_at: c.created_at,
+  }));
+
+  // Learning progress rollup
+  const certsByModule = new Map<string, number>();
+  for (const c of certificates ?? []) certsByModule.set(c.module_id, (certsByModule.get(c.module_id) ?? 0) + 1);
+  const learning = (modules ?? []).map((m) => ({
+    id: m.id,
+    title: m.title,
+    issued: certsByModule.get(m.id) ?? 0,
+  }));
+
+  // Signups over last 7 days
+  const now = Date.now();
+  const days: { day: string; count: number }[] = [];
+  for (let i = 6; i >= 0; i--) {
+    const dayStart = new Date(now - i * 86400000);
+    dayStart.setHours(0, 0, 0, 0);
+    const dayEnd = dayStart.getTime() + 86400000;
+    const count = (profiles ?? []).filter((p) => {
+      const t = new Date(p.created_at).getTime();
+      return t >= dayStart.getTime() && t < dayEnd;
+    }).length;
+    days.push({ day: dayStart.toLocaleDateString(undefined, { weekday: "short" }), count });
+  }
+
+  return {
+    kpis: {
+      farmers: profiles?.length ?? 0,
+      onboarded: (profiles ?? []).filter((p) => p.onboarded).length,
+      gardens: gardens?.length ?? 0,
+      plots_growing: (plots ?? []).filter((p) => p.status === "growing").length,
+      diagnoses: diagnoses?.length ?? 0,
+      orders: orders?.length ?? 0,
+      gmv_cents: gmv,
+      wallet_total_cents: walletTotal,
+      payouts_cents: payouts,
+      certificates: certificates?.length ?? 0,
+      consulting_open: (consulting ?? []).filter((c) => !c.replied_at).length,
+    },
+    farmers,
+    recentDiagnoses,
+    topDiseases,
+    regions,
+    recentOrders,
+    topProducts,
+    gardensList,
+    consultingQueue,
+    learning,
+    signups7d: days,
+  };
+});
