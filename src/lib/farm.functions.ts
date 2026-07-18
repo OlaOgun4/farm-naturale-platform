@@ -346,7 +346,7 @@ export const placeOrder = createServerFn({ method: "POST" })
     // Check wallet
     const { data: txs } = await supabase.from("wallet_transactions").select("kind, amount_cents").eq("user_id", userId);
     const balance = (txs ?? []).reduce((s, t) => (t.kind === "credit" ? s + t.amount_cents : s - t.amount_cents), 0);
-    if (balance < total) throw new Error(`Insufficient wallet balance. Need ₹${(total / 100).toFixed(0)}, have ₹${(balance / 100).toFixed(0)}.`);
+    if (balance < total) throw new Error(`Insufficient wallet balance. Need ₦${(total / 100).toFixed(0)}, have ₦${(balance / 100).toFixed(0)}.`);
 
     const { data: order, error: oe } = await supabase
       .from("orders")

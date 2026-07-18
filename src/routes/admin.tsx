@@ -55,7 +55,7 @@ const NAV: { id: WebScreen; label: string }[] = [
 
 function rupees(cents: number) {
   const rupees = Math.round(cents / 100);
-  return "₹" + rupees.toLocaleString("en-IN");
+  return "₦" + rupees.toLocaleString("en-IN");
 }
 
 function AdminView() {
