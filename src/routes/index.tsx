@@ -1036,7 +1036,7 @@ function ConsultScreen() {
             <p className="mt-1 text-sm text-foreground">{r.question}</p>
             {r.reply ? (
               <div className="mt-3 rounded-xl bg-fn-light p-3">
-                <p className="text-[11px] font-bold uppercase text-primary">Priya · Agronomist</p>
+                <p className="text-[11px] font-bold uppercase text-primary">Amara · Agronomist</p>
                 <p className="mt-1 text-sm text-foreground">{r.reply}</p>
               </div>
             ) : (
