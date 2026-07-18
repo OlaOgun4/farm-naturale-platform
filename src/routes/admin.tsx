@@ -1,7 +1,8 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { useSuspenseQuery, queryOptions } from "@tanstack/react-query";
+import { useSuspenseQuery, useQuery, queryOptions } from "@tanstack/react-query";
 import { useState } from "react";
-import { getAdminOverview } from "@/lib/farm.functions";
+import { getAdminOverview, getFarmerDetail } from "@/lib/farm.functions";
+import { X, Eye } from "lucide-react";
 
 const overviewQueryOptions = queryOptions({
   queryKey: ["admin-overview"],
@@ -54,14 +55,15 @@ const NAV: { id: WebScreen; label: string }[] = [
 ];
 
 function rupees(cents: number) {
-  const rupees = Math.round(cents / 100);
-  return "₦" + rupees.toLocaleString("en-IN");
+  const naira = Math.round(cents / 100);
+  return "₦" + naira.toLocaleString("en-NG");
 }
 
 function AdminView() {
   const [active, setActive] = useState<WebScreen>("dashboard");
   const { data } = useSuspenseQuery(overviewQueryOptions);
   const current = NAV.find((n) => n.id === active)!;
+  const [impersonateId, setImpersonateId] = useState<string | null>(null);
 
   return (
     <div className="min-h-screen bg-[color:var(--fn-bg)] text-[color:var(--fn-text)]">
@@ -129,9 +131,12 @@ function AdminView() {
             </span>
           </div>
 
-          <WebPanel screen={active} data={data} />
+          <WebPanel screen={active} data={data} onImpersonate={setImpersonateId} />
         </section>
       </main>
+      {impersonateId ? (
+        <ImpersonateModal userId={impersonateId} onClose={() => setImpersonateId(null)} />
+      ) : null}
     </div>
   );
 }
