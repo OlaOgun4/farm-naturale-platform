@@ -177,7 +177,15 @@ function Row({ left, right, status }: { left: React.ReactNode; right?: React.Rea
 
 type OverviewData = Awaited<ReturnType<typeof getAdminOverview>>;
 
-function WebPanel({ screen, data }: { screen: WebScreen; data: OverviewData }) {
+function WebPanel({
+  screen,
+  data,
+  onImpersonate,
+}: {
+  screen: WebScreen;
+  data: OverviewData;
+  onImpersonate: (userId: string) => void;
+}) {
   if (screen === "dashboard") {
     const maxSignups = Math.max(1, ...data.signups7d.map((d) => d.count));
     return (
