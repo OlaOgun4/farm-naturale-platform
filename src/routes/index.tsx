@@ -475,8 +475,8 @@ function OnboardingScreen({ initialName }: { initialName: string }) {
     onError: (e) => toast.error(e instanceof Error ? e.message : "Failed to save"),
   });
 
-  const cropOptions = ["Tomato", "Ginger", "Turmeric", "Chilli", "Paddy", "Vegetables", "Fruit trees"];
-  const goalOptions = ["Home consumption", "Sell at market", "Organic certification", "Learn new methods"];
+  const cropOptions = ["Ginger"];
+  const goalOptions = ["Sell at market", "Organic certification", "Learn new methods", "Home consumption"];
   const toggle = (list: string[], v: string, set: (l: string[]) => void) =>
     set(list.includes(v) ? list.filter((x) => x !== v) : [...list, v]);
 
