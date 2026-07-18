@@ -311,7 +311,7 @@ function WebPanel({ screen, data }: { screen: WebScreen; data: OverviewData }) {
                 </>
               }
               right={d.disease}
-              status={d.severity !== "none" ? d.severity : undefined}
+              status={d.severity && d.severity !== "none" ? d.severity : undefined}
             />
           ))}
         </Panel>
