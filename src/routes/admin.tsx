@@ -403,3 +403,139 @@ function WebPanel({
     </Panel>
   );
 }
+
+function fmt(cents: number) {
+  return "₦" + Math.round(cents / 100).toLocaleString("en-NG");
+}
+
+function ImpersonateModal({ userId, onClose }: { userId: string; onClose: () => void }) {
+  const { data, isLoading, error } = useQuery({
+    queryKey: ["farmer-detail", userId],
+    queryFn: () => getFarmerDetail({ data: { user_id: userId } }),
+  });
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={onClose}>
+      <div
+        className="relative max-h-[90vh] w-full max-w-md overflow-y-auto rounded-3xl bg-white shadow-2xl"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <button
+          onClick={onClose}
+          className="absolute right-3 top-3 z-10 grid h-8 w-8 place-items-center rounded-full bg-black/60 text-white hover:bg-black"
+        >
+          <X className="h-4 w-4" />
+        </button>
+
+        {isLoading || !data ? (
+          <div className="p-8 text-center text-sm text-[color:var(--fn-muted)]">Loading farmer view…</div>
+        ) : error ? (
+          <div className="p-8 text-sm text-red-600">Failed to load: {String((error as Error).message)}</div>
+        ) : (
+          <div className="space-y-4 p-5">
+            <div className="rounded-2xl bg-gradient-to-br from-[color:var(--fn-green)] to-[color:var(--fn-green-3)] p-4 text-white">
+              <p className="text-[11px] font-bold uppercase opacity-80">Impersonating (read-only)</p>
+              <h2 className="mt-1 text-xl font-bold">Namaste, {data.profile?.full_name || "Farmer"} 👋</h2>
+              <p className="text-xs opacity-90">{data.profile?.village || "—"} • {data.profile?.land_size_acres ?? 0} acres</p>
+              <div className="mt-3 rounded-xl bg-white/15 p-3">
+                <p className="text-[10px] uppercase opacity-80">Wallet balance</p>
+                <p className="text-2xl font-black">{fmt(data.wallet_cents)}</p>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-3 gap-2 text-center">
+              <div className="rounded-xl bg-[color:var(--fn-light)] p-2">
+                <p className="text-lg font-bold text-[color:var(--fn-green)]">{data.gardens.length}</p>
+                <p className="text-[10px] text-[color:var(--fn-muted)]">Gardens</p>
+              </div>
+              <div className="rounded-xl bg-[color:var(--fn-light)] p-2">
+                <p className="text-lg font-bold text-[color:var(--fn-green)]">{data.plots.filter((p) => p.status === "growing").length}/{data.plots.length}</p>
+                <p className="text-[10px] text-[color:var(--fn-muted)]">Growing</p>
+              </div>
+              <div className="rounded-xl bg-[color:var(--fn-light)] p-2">
+                <p className="text-lg font-bold text-[color:var(--fn-green)]">{data.diagnoses.length}</p>
+                <p className="text-[10px] text-[color:var(--fn-muted)]">Diagnoses</p>
+              </div>
+            </div>
+
+            <Section title="Home Gardens">
+              {data.gardens.length === 0 ? <Empty text="No gardens yet" /> : data.gardens.map((g) => {
+                const gPlots = data.plots.filter((p) => p.garden_id === g.id);
+                return (
+                  <div key={g.id} className="rounded-xl border border-[color:var(--fn-line)] p-3">
+                    <p className="font-bold text-sm">{g.name}</p>
+                    <p className="text-xs text-[color:var(--fn-muted)]">{g.location || "—"} • {g.size_sqm ?? 0} sqm</p>
+                    <p className="mt-1 text-xs">{gPlots.length ? gPlots.map((p) => `${p.crop} (${p.status})`).join(", ") : "No plots"}</p>
+                  </div>
+                );
+              })}
+            </Section>
+
+            <Section title="AI Crop Doctor · Recent">
+              {data.diagnoses.length === 0 ? <Empty text="No diagnoses yet" /> : data.diagnoses.slice(0, 5).map((d) => (
+                <div key={d.id} className="flex gap-3 rounded-xl border border-[color:var(--fn-line)] p-2.5">
+                  {d.photo_url ? <img src={d.photo_url} alt="" className="h-14 w-14 rounded-lg object-cover" /> : <div className="h-14 w-14 rounded-lg bg-[color:var(--fn-light)]" />}
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-bold truncate">{d.disease}</p>
+                    <p className="text-[11px] text-[color:var(--fn-muted)]">{d.crop || "Ginger"} • {d.severity || "—"}</p>
+                  </div>
+                </div>
+              ))}
+            </Section>
+
+            <Section title="Wallet · Recent Activity">
+              {data.transactions.length === 0 ? <Empty text="No transactions" /> : data.transactions.slice(0, 8).map((t, i) => (
+                <div key={i} className="flex items-center justify-between border-b border-[#edf2ee] py-2 text-xs last:border-b-0">
+                  <span>{t.reason || t.kind}</span>
+                  <span className={t.kind === "credit" ? "font-bold text-[color:var(--fn-green)]" : "font-bold text-red-600"}>
+                    {t.kind === "credit" ? "+" : "-"}{fmt(t.amount_cents)}
+                  </span>
+                </div>
+              ))}
+            </Section>
+
+            <Section title="Orders">
+              {data.orders.length === 0 ? <Empty text="No orders yet" /> : data.orders.slice(0, 5).map((o) => (
+                <div key={o.id} className="flex items-center justify-between rounded-xl border border-[color:var(--fn-line)] p-2.5 text-xs">
+                  <span className="min-w-0 flex-1 truncate">{o.items.map((i) => `${i.title}×${i.qty}`).join(", ") || "—"}</span>
+                  <span className="font-bold">{fmt(o.total_cents)}</span>
+                </div>
+              ))}
+            </Section>
+
+            <Section title="Consultations">
+              {data.consulting.length === 0 ? <Empty text="No consultations" /> : data.consulting.slice(0, 5).map((c) => (
+                <div key={c.id} className="rounded-xl border border-[color:var(--fn-line)] p-2.5 text-xs">
+                  <p className="font-bold">{c.question}</p>
+                  {c.reply && <p className="mt-1 text-[color:var(--fn-muted)]">→ {c.reply}</p>}
+                </div>
+              ))}
+            </Section>
+
+            <Section title="Certificates">
+              {data.certificates.length === 0 ? <Empty text="No certificates yet" /> : data.certificates.map((c) => (
+                <div key={c.id} className="flex items-center justify-between rounded-xl border border-[color:var(--fn-line)] p-2.5 text-xs">
+                  <span className="font-bold">{c.module_title}</span>
+                  <span className="text-[color:var(--fn-muted)]">{c.code}</span>
+                </div>
+              ))}
+            </Section>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function Section({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <div>
+      <h3 className="mb-2 text-xs font-bold uppercase tracking-wide text-[color:var(--fn-muted)]">{title}</h3>
+      <div className="space-y-2">{children}</div>
+    </div>
+  );
+}
+
+function Empty({ text }: { text: string }) {
+  return <p className="rounded-xl bg-[color:var(--fn-light)] p-3 text-center text-xs text-[color:var(--fn-muted)]">{text}</p>;
+}
