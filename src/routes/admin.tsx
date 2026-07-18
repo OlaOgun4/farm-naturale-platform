@@ -241,6 +241,7 @@ function WebPanel({
                 <th>Growing</th>
                 <th>Wallet</th>
                 <th>Status</th>
+                <th></th>
               </tr>
             </thead>
             <tbody>
@@ -256,6 +257,14 @@ function WebPanel({
                     <span className={"rounded-full px-2 py-1 text-[11px] font-bold " + (f.onboarded ? "bg-[#e8f7ed] text-[color:var(--fn-green)]" : "bg-amber-100 text-amber-700")}>
                       {f.onboarded ? "Verified" : "Pending"}
                     </span>
+                  </td>
+                  <td>
+                    <button
+                      onClick={() => onImpersonate(f.id)}
+                      className="inline-flex items-center gap-1 rounded-full border border-[color:var(--fn-green)] px-2.5 py-1 text-[11px] font-bold text-[color:var(--fn-green)] hover:bg-[#e8f7ed]"
+                    >
+                      <Eye className="h-3 w-3" /> View as
+                    </button>
                   </td>
                 </tr>
               ))}
