@@ -198,10 +198,12 @@ function WebPanel({
   screen,
   data,
   onImpersonate,
+  onTopUp,
 }: {
   screen: WebScreen;
   data: OverviewData;
   onImpersonate: (userId: string) => void;
+  onTopUp: (userId: string) => void;
 }) {
   if (screen === "dashboard") {
     const maxSignups = Math.max(1, ...data.signups7d.map((d) => d.count));
