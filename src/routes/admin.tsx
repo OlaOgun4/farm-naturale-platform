@@ -141,11 +141,18 @@ function AdminView() {
             </span>
           </div>
 
-          <WebPanel screen={active} data={data} onImpersonate={setImpersonateId} />
+          <WebPanel screen={active} data={data} onImpersonate={setImpersonateId} onTopUp={setTopUpId} />
         </section>
       </main>
       {impersonateId ? (
         <ImpersonateModal userId={impersonateId} onClose={() => setImpersonateId(null)} />
+      ) : null}
+      {topUpId ? (
+        <TopUpModal
+          userId={topUpId}
+          farmerName={data.farmers.find((f) => f.id === topUpId)?.full_name ?? "Farmer"}
+          onClose={() => setTopUpId(null)}
+        />
       ) : null}
     </div>
   );
