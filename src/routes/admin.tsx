@@ -567,3 +567,107 @@ function Section({ title, children }: { title: string; children: React.ReactNode
 function Empty({ text }: { text: string }) {
   return <p className="rounded-xl bg-[color:var(--fn-light)] p-3 text-center text-xs text-[color:var(--fn-muted)]">{text}</p>;
 }
+
+function DeleteFarmerButton({ userId, name }: { userId: string; name: string }) {
+  const qc = useQueryClient();
+  const del = useMutation({
+    mutationFn: useServerFn(adminDeleteFarmer),
+    onSuccess: () => {
+      toast.success(`Deleted ${name}`);
+      qc.invalidateQueries({ queryKey: ["admin-overview"] });
+    },
+    onError: (e) => toast.error(e instanceof Error ? e.message : "Failed"),
+  });
+  return (
+    <button
+      disabled={del.isPending}
+      onClick={() => {
+        if (window.confirm(`Delete ${name} and ALL their data? This cannot be undone.`)) {
+          del.mutate({ data: { user_id: userId } });
+        }
+      }}
+      className="ml-1 inline-flex items-center gap-1 rounded-full border border-red-300 px-2.5 py-1 text-[11px] font-bold text-red-700 hover:bg-red-50 disabled:opacity-50"
+    >
+      <Trash2 className="h-3 w-3" /> Delete
+    </button>
+  );
+}
+
+function DeleteGardenButton({ gardenId, name }: { gardenId: string; name: string }) {
+  const qc = useQueryClient();
+  const del = useMutation({
+    mutationFn: useServerFn(adminDeleteGarden),
+    onSuccess: () => {
+      toast.success(`Deleted ${name}`);
+      qc.invalidateQueries({ queryKey: ["admin-overview"] });
+    },
+    onError: (e) => toast.error(e instanceof Error ? e.message : "Failed"),
+  });
+  return (
+    <button
+      disabled={del.isPending}
+      onClick={() => {
+        if (window.confirm(`Delete garden "${name}" and all its plots?`)) {
+          del.mutate({ data: { id: gardenId } });
+        }
+      }}
+      className="inline-flex items-center gap-1 rounded-full border border-red-300 px-2.5 py-1 text-[11px] font-bold text-red-700 hover:bg-red-50 disabled:opacity-50"
+    >
+      <Trash2 className="h-3 w-3" /> Delete
+    </button>
+  );
+}
+
+function TopUpModal({ userId, farmerName, onClose }: { userId: string; farmerName: string; onClose: () => void }) {
+  const qc = useQueryClient();
+  const [amount, setAmount] = useState("5000");
+  const [reason, setReason] = useState("Grant top-up");
+  const topUp = useMutation({
+    mutationFn: useServerFn(adminTopUpWallet),
+    onSuccess: () => {
+      toast.success(`Wallet topped up for ${farmerName}`);
+      qc.invalidateQueries({ queryKey: ["admin-overview"] });
+      qc.invalidateQueries({ queryKey: ["farmer-detail", userId] });
+      onClose();
+    },
+    onError: (e) => toast.error(e instanceof Error ? e.message : "Failed"),
+  });
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={onClose}>
+      <div className="w-full max-w-sm rounded-2xl bg-white p-5 shadow-2xl" onClick={(e) => e.stopPropagation()}>
+        <div className="mb-3 flex items-center justify-between">
+          <h3 className="text-base font-bold">Top up wallet</h3>
+          <button onClick={onClose} className="grid h-7 w-7 place-items-center rounded-full bg-black/60 text-white hover:bg-black">
+            <X className="h-3.5 w-3.5" />
+          </button>
+        </div>
+        <p className="mb-3 text-xs text-[color:var(--fn-muted)]">Adding funds to {farmerName}&apos;s wallet.</p>
+        <label className="block text-[11px] font-bold uppercase text-[color:var(--fn-muted)]">Amount (₦)</label>
+        <input
+          type="number"
+          min="1"
+          value={amount}
+          onChange={(e) => setAmount(e.target.value)}
+          className="mt-1 w-full rounded-xl border border-[color:var(--fn-line)] px-3 py-2 text-sm outline-none focus:border-[color:var(--fn-green)]"
+        />
+        <label className="mt-3 block text-[11px] font-bold uppercase text-[color:var(--fn-muted)]">Reason</label>
+        <input
+          value={reason}
+          onChange={(e) => setReason(e.target.value)}
+          className="mt-1 w-full rounded-xl border border-[color:var(--fn-line)] px-3 py-2 text-sm outline-none focus:border-[color:var(--fn-green)]"
+        />
+        <button
+          disabled={topUp.isPending || !(Number(amount) > 0)}
+          onClick={() =>
+            topUp.mutate({
+              data: { user_id: userId, amount_cents: Math.round(Number(amount) * 100), reason },
+            })
+          }
+          className="mt-4 w-full rounded-xl bg-[color:var(--fn-green)] py-2 text-sm font-extrabold text-white disabled:opacity-60"
+        >
+          {topUp.isPending ? "Processing…" : `Add ₦${Number(amount || 0).toLocaleString("en-NG")} to wallet`}
+        </button>
+      </div>
+    </div>
+  );
+}
