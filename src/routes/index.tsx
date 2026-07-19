@@ -704,6 +704,67 @@ function StatCard({ label, value }: { label: string; value: number | string }) {
   );
 }
 
+function ProfileEditor({
+  initial,
+  onClose,
+}: {
+  initial: { full_name: string; phone: string; village: string; land_size_acres: number };
+  onClose: () => void;
+}) {
+  const qc = useQueryClient();
+  const [full_name, setName] = useState(initial.full_name);
+  const [phone, setPhone] = useState(initial.phone);
+  const [village, setVillage] = useState(initial.village);
+  const [land, setLand] = useState(String(initial.land_size_acres ?? ""));
+  const save = useMutation({
+    mutationFn: useServerFn(updateProfile),
+    onSuccess: () => {
+      toast.success("Profile updated");
+      qc.invalidateQueries();
+      onClose();
+    },
+    onError: (e) => toast.error(e instanceof Error ? e.message : "Failed"),
+  });
+  return (
+    <div className="rounded-2xl border border-border bg-card p-3 shadow-fn-panel">
+      <p className="mb-2 text-xs font-bold uppercase tracking-wide text-muted-foreground">Edit profile</p>
+      <div className="space-y-2">
+        <input value={full_name} onChange={(e) => setName(e.target.value)} placeholder="Full name"
+          className="w-full rounded-xl border border-border bg-card px-3 py-2 text-sm outline-none focus:border-primary" />
+        <div className="grid grid-cols-2 gap-2">
+          <input value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="Phone"
+            className="w-full rounded-xl border border-border bg-card px-3 py-2 text-sm outline-none focus:border-primary" />
+          <input value={village} onChange={(e) => setVillage(e.target.value)} placeholder="Village / town"
+            className="w-full rounded-xl border border-border bg-card px-3 py-2 text-sm outline-none focus:border-primary" />
+        </div>
+        <input value={land} type="number" step="0.1" onChange={(e) => setLand(e.target.value)} placeholder="Land size (acres)"
+          className="w-full rounded-xl border border-border bg-card px-3 py-2 text-sm outline-none focus:border-primary" />
+        <div className="flex gap-2">
+          <button
+            onClick={() =>
+              save.mutate({
+                data: {
+                  full_name: full_name || undefined,
+                  phone,
+                  village,
+                  land_size_acres: Number(land) || 0,
+                },
+              })
+            }
+            disabled={save.isPending || !full_name}
+            className="flex-1 rounded-xl bg-primary py-2 text-xs font-extrabold text-primary-foreground disabled:opacity-60"
+          >
+            {save.isPending ? "Saving…" : "Save"}
+          </button>
+          <button onClick={onClose} className="rounded-xl border border-border bg-card px-3 py-2 text-xs font-extrabold text-fn-navy hover:bg-secondary">
+            Cancel
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function Quick({ icon: Icon, label, onClick }: { icon: LucideIcon; label: string; onClick: () => void }) {
   return (
     <button
