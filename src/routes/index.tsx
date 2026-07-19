@@ -708,6 +708,16 @@ function GardenScreen() {
   const [newCrop, setNewCrop] = useState<Record<string, string>>({});
   const create = useMutation({ mutationFn: useServerFn(createGarden), onSuccess: () => { setNewName(""); qc.invalidateQueries({ queryKey: ["gardens"] }); qc.invalidateQueries({ queryKey: ["dashboard"] }); } });
   const plant = useMutation({ mutationFn: useServerFn(addPlot), onSuccess: () => qc.invalidateQueries() });
+  const rename = useMutation({
+    mutationFn: useServerFn(updateGarden),
+    onSuccess: () => { toast.success("Garden updated"); qc.invalidateQueries({ queryKey: ["gardens"] }); },
+    onError: (e) => toast.error(e instanceof Error ? e.message : "Failed"),
+  });
+  const remove = useMutation({
+    mutationFn: useServerFn(deleteGarden),
+    onSuccess: () => { toast.success("Garden deleted"); qc.invalidateQueries(); },
+    onError: (e) => toast.error(e instanceof Error ? e.message : "Failed"),
+  });
 
   return (
     <div className="space-y-3">
@@ -747,7 +757,25 @@ function GardenScreen() {
                 <p className="text-sm font-extrabold text-fn-green-2">{g.name}</p>
                 <p className="text-[11px] text-muted-foreground">{plots.length} plots</p>
               </div>
-              <Leaf className="h-4 w-4 text-primary" />
+              <div className="flex items-center gap-1">
+                <button
+                  onClick={() => {
+                    const name = window.prompt("Rename garden", g.name);
+                    if (name && name.trim() && name !== g.name) rename.mutate({ data: { id: g.id, name: name.trim() } });
+                  }}
+                  className="rounded-md border border-border bg-card px-2 py-1 text-[10px] font-extrabold text-fn-navy hover:bg-secondary"
+                >
+                  Edit
+                </button>
+                <button
+                  onClick={() => {
+                    if (window.confirm(`Delete "${g.name}" and all its plots?`)) remove.mutate({ data: { id: g.id } });
+                  }}
+                  className="rounded-md border border-red-200 bg-red-50 px-2 py-1 text-[10px] font-extrabold text-red-700 hover:bg-red-100"
+                >
+                  Delete
+                </button>
+              </div>
             </div>
 
             <div className="mt-3 space-y-1">
