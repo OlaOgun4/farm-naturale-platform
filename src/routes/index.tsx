@@ -36,6 +36,8 @@ import {
   completeOnboarding,
   createGarden,
   createListing,
+  deleteGarden,
+  deletePlot,
   diagnoseCropPhoto,
   getDashboard,
   getMe,
@@ -49,6 +51,8 @@ import {
   placeOrder,
   requestPayout,
   submitConsultingRequest,
+  updateGarden,
+  updateProfile,
   uploadCropPhoto,
 } from "@/lib/farm.functions";
 
@@ -622,7 +626,7 @@ function DashboardScreen({ go }: { go: (s: ScreenId) => void }) {
   return (
     <div className="space-y-4">
       <div>
-        <p className="text-xs font-bold uppercase tracking-wide text-muted-foreground">Namaste,</p>
+        <p className="text-xs font-bold uppercase tracking-wide text-muted-foreground">Welcome,</p>
         <h2 className="text-2xl font-black text-fn-green-2">{name.split(" ")[0]}!</h2>
         <p className="mt-1 text-sm text-muted-foreground">Let&apos;s grow something great today.</p>
       </div>
