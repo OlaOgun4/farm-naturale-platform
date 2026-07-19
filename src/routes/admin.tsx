@@ -72,9 +72,11 @@ function AdminView() {
   const { data } = useSuspenseQuery(overviewQueryOptions);
   const current = NAV.find((n) => n.id === active)!;
   const [impersonateId, setImpersonateId] = useState<string | null>(null);
+  const [topUpId, setTopUpId] = useState<string | null>(null);
 
   return (
     <div className="min-h-screen bg-[color:var(--fn-bg)] text-[color:var(--fn-text)]">
+      <Toaster richColors position="top-center" />
       <header className="sticky top-0 z-20 flex items-center justify-between border-b border-[color:var(--fn-line)] bg-white px-6 py-3.5">
         <div className="flex items-center gap-3">
           <div className="grid h-[50px] w-[50px] place-items-center rounded-2xl bg-gradient-to-br from-[color:var(--fn-green)] to-[color:var(--fn-green-3)] font-black text-white">
