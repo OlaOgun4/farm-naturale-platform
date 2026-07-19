@@ -36,6 +36,8 @@ import {
   completeOnboarding,
   createGarden,
   createListing,
+  deleteGarden,
+  deletePlot,
   diagnoseCropPhoto,
   getDashboard,
   getMe,
@@ -49,6 +51,8 @@ import {
   placeOrder,
   requestPayout,
   submitConsultingRequest,
+  updateGarden,
+  updateProfile,
   uploadCropPhoto,
 } from "@/lib/farm.functions";
 
@@ -618,14 +622,34 @@ function DashboardScreen({ go }: { go: (s: ScreenId) => void }) {
   const { data } = useQuery({ queryKey: ["dashboard"], queryFn: () => fn() });
   const me = useQuery({ queryKey: ["me"], queryFn: useServerFn(getMe) });
   const name = me.data?.profile?.full_name ?? "Farmer";
+  const [editing, setEditing] = useState(false);
 
   return (
     <div className="space-y-4">
-      <div>
-        <p className="text-xs font-bold uppercase tracking-wide text-muted-foreground">Namaste,</p>
-        <h2 className="text-2xl font-black text-fn-green-2">{name.split(" ")[0]}!</h2>
-        <p className="mt-1 text-sm text-muted-foreground">Let&apos;s grow something great today.</p>
+      <div className="flex items-start justify-between gap-2">
+        <div>
+          <p className="text-xs font-bold uppercase tracking-wide text-muted-foreground">Welcome,</p>
+          <h2 className="text-2xl font-black text-fn-green-2">{name.split(" ")[0]}!</h2>
+          <p className="mt-1 text-sm text-muted-foreground">Let&apos;s grow something great today.</p>
+        </div>
+        <button
+          onClick={() => setEditing(true)}
+          className="rounded-full border border-border bg-card px-3 py-1.5 text-[11px] font-extrabold text-fn-navy hover:bg-secondary"
+        >
+          Edit profile
+        </button>
       </div>
+      {editing ? (
+        <ProfileEditor
+          initial={{
+            full_name: me.data?.profile?.full_name ?? "",
+            phone: (me.data?.profile as { phone?: string } | null)?.phone ?? "",
+            village: (me.data?.profile as { village?: string } | null)?.village ?? "",
+            land_size_acres: (me.data?.profile as { land_size_acres?: number } | null)?.land_size_acres ?? 0,
+          }}
+          onClose={() => setEditing(false)}
+        />
+      ) : null}
 
       <div className="grid grid-cols-2 gap-2">
         <StatCard label="Gardens" value={data?.gardens ?? 0} />
@@ -680,6 +704,67 @@ function StatCard({ label, value }: { label: string; value: number | string }) {
   );
 }
 
+function ProfileEditor({
+  initial,
+  onClose,
+}: {
+  initial: { full_name: string; phone: string; village: string; land_size_acres: number };
+  onClose: () => void;
+}) {
+  const qc = useQueryClient();
+  const [full_name, setName] = useState(initial.full_name);
+  const [phone, setPhone] = useState(initial.phone);
+  const [village, setVillage] = useState(initial.village);
+  const [land, setLand] = useState(String(initial.land_size_acres ?? ""));
+  const save = useMutation({
+    mutationFn: useServerFn(updateProfile),
+    onSuccess: () => {
+      toast.success("Profile updated");
+      qc.invalidateQueries();
+      onClose();
+    },
+    onError: (e) => toast.error(e instanceof Error ? e.message : "Failed"),
+  });
+  return (
+    <div className="rounded-2xl border border-border bg-card p-3 shadow-fn-panel">
+      <p className="mb-2 text-xs font-bold uppercase tracking-wide text-muted-foreground">Edit profile</p>
+      <div className="space-y-2">
+        <input value={full_name} onChange={(e) => setName(e.target.value)} placeholder="Full name"
+          className="w-full rounded-xl border border-border bg-card px-3 py-2 text-sm outline-none focus:border-primary" />
+        <div className="grid grid-cols-2 gap-2">
+          <input value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="Phone"
+            className="w-full rounded-xl border border-border bg-card px-3 py-2 text-sm outline-none focus:border-primary" />
+          <input value={village} onChange={(e) => setVillage(e.target.value)} placeholder="Village / town"
+            className="w-full rounded-xl border border-border bg-card px-3 py-2 text-sm outline-none focus:border-primary" />
+        </div>
+        <input value={land} type="number" step="0.1" onChange={(e) => setLand(e.target.value)} placeholder="Land size (acres)"
+          className="w-full rounded-xl border border-border bg-card px-3 py-2 text-sm outline-none focus:border-primary" />
+        <div className="flex gap-2">
+          <button
+            onClick={() =>
+              save.mutate({
+                data: {
+                  full_name: full_name || undefined,
+                  phone,
+                  village,
+                  land_size_acres: Number(land) || 0,
+                },
+              })
+            }
+            disabled={save.isPending || !full_name}
+            className="flex-1 rounded-xl bg-primary py-2 text-xs font-extrabold text-primary-foreground disabled:opacity-60"
+          >
+            {save.isPending ? "Saving…" : "Save"}
+          </button>
+          <button onClick={onClose} className="rounded-xl border border-border bg-card px-3 py-2 text-xs font-extrabold text-fn-navy hover:bg-secondary">
+            Cancel
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function Quick({ icon: Icon, label, onClick }: { icon: LucideIcon; label: string; onClick: () => void }) {
   return (
     <button
@@ -704,6 +789,16 @@ function GardenScreen() {
   const [newCrop, setNewCrop] = useState<Record<string, string>>({});
   const create = useMutation({ mutationFn: useServerFn(createGarden), onSuccess: () => { setNewName(""); qc.invalidateQueries({ queryKey: ["gardens"] }); qc.invalidateQueries({ queryKey: ["dashboard"] }); } });
   const plant = useMutation({ mutationFn: useServerFn(addPlot), onSuccess: () => qc.invalidateQueries() });
+  const rename = useMutation({
+    mutationFn: useServerFn(updateGarden),
+    onSuccess: () => { toast.success("Garden updated"); qc.invalidateQueries({ queryKey: ["gardens"] }); },
+    onError: (e) => toast.error(e instanceof Error ? e.message : "Failed"),
+  });
+  const remove = useMutation({
+    mutationFn: useServerFn(deleteGarden),
+    onSuccess: () => { toast.success("Garden deleted"); qc.invalidateQueries(); },
+    onError: (e) => toast.error(e instanceof Error ? e.message : "Failed"),
+  });
 
   return (
     <div className="space-y-3">
@@ -743,7 +838,25 @@ function GardenScreen() {
                 <p className="text-sm font-extrabold text-fn-green-2">{g.name}</p>
                 <p className="text-[11px] text-muted-foreground">{plots.length} plots</p>
               </div>
-              <Leaf className="h-4 w-4 text-primary" />
+              <div className="flex items-center gap-1">
+                <button
+                  onClick={() => {
+                    const name = window.prompt("Rename garden", g.name);
+                    if (name && name.trim() && name !== g.name) rename.mutate({ data: { id: g.id, name: name.trim() } });
+                  }}
+                  className="rounded-md border border-border bg-card px-2 py-1 text-[10px] font-extrabold text-fn-navy hover:bg-secondary"
+                >
+                  Edit
+                </button>
+                <button
+                  onClick={() => {
+                    if (window.confirm(`Delete "${g.name}" and all its plots?`)) remove.mutate({ data: { id: g.id } });
+                  }}
+                  className="rounded-md border border-red-200 bg-red-50 px-2 py-1 text-[10px] font-extrabold text-red-700 hover:bg-red-100"
+                >
+                  Delete
+                </button>
+              </div>
             </div>
 
             <div className="mt-3 space-y-1">
@@ -793,6 +906,10 @@ function PlotRow({ plot }: { plot: { id: string; crop: string; status: string; p
     }),
     onSuccess: () => qc.invalidateQueries(),
   });
+  const remove = useMutation({
+    mutationFn: useServerFn(deletePlot),
+    onSuccess: () => { toast.success("Plot removed"); qc.invalidateQueries(); },
+  });
   // Simpler: directly use useServerFn
   const logFn = useServerFn(
     // eslint-disable-next-line @typescript-eslint/no-require-imports
@@ -820,6 +937,12 @@ function PlotRow({ plot }: { plot: { id: string; crop: string; status: string; p
           className="rounded-md bg-primary px-2 py-1 text-[10px] font-extrabold text-primary-foreground"
         >
           Harvest
+        </button>
+        <button
+          onClick={() => { if (window.confirm("Remove this plot?")) remove.mutate({ data: { id: plot.id } }); }}
+          className="rounded-md border border-red-200 bg-red-50 px-2 py-1 text-[10px] font-extrabold text-red-700 hover:bg-red-100"
+        >
+          Delete
         </button>
       </div>
     </div>

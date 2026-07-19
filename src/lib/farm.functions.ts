@@ -289,7 +289,11 @@ export const listProducts = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }) => {
     const { supabase } = context;
-    const { data } = await supabase.from("products").select("*").order("created_at", { ascending: false });
+    const { data } = await supabase
+      .from("products")
+      .select("*")
+      .or("title.ilike.%ginger%,category.ilike.%ginger%,description.ilike.%ginger%")
+      .order("created_at", { ascending: false });
     return data ?? [];
   });
 
@@ -309,6 +313,10 @@ export const createListing = createServerFn({ method: "POST" })
   )
   .handler(async ({ data, context }) => {
     const { supabase, userId } = context;
+    const hay = `${data.title} ${data.category} ${data.description}`.toLowerCase();
+    if (!hay.includes("ginger")) {
+      throw new Error("Marketplace only accepts ginger and ginger-related products. Please include 'ginger' in the title, category or description.");
+    }
     const { data: row, error } = await supabase
       .from("products")
       .insert({
@@ -815,4 +823,141 @@ export const getFarmerDetail = createServerFn({ method: "GET" })
       consulting: consulting ?? [],
       certificates: enrichedCerts,
     };
+  });
+
+// ---------- User CRUD: profile & gardens ----------
+
+export const updateProfile = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((i: unknown) =>
+    z
+      .object({
+        full_name: z.string().min(1).optional(),
+        phone: z.string().optional(),
+        village: z.string().optional(),
+        land_size_acres: z.number().optional(),
+      })
+      .parse(i),
+  )
+  .handler(async ({ data, context }) => {
+    const { supabase, userId } = context;
+    const { error } = await supabase
+      .from("profiles")
+      .update({ ...data, updated_at: new Date().toISOString() })
+      .eq("id", userId);
+    if (error) throw new Error(error.message);
+    return { ok: true };
+  });
+
+export const updateGarden = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((i: unknown) =>
+    z
+      .object({
+        id: z.string().uuid(),
+        name: z.string().min(1).optional(),
+        size_sqm: z.number().nullable().optional(),
+        location: z.string().nullable().optional(),
+      })
+      .parse(i),
+  )
+  .handler(async ({ data, context }) => {
+    const { supabase, userId } = context;
+    const { id, ...patch } = data;
+    const { error } = await supabase.from("gardens").update(patch).eq("id", id).eq("user_id", userId);
+    if (error) throw new Error(error.message);
+    return { ok: true };
+  });
+
+export const deleteGarden = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((i: unknown) => z.object({ id: z.string().uuid() }).parse(i))
+  .handler(async ({ data, context }) => {
+    const { supabase, userId } = context;
+    // Delete events + plots first (in case cascade not set)
+    const { data: plots } = await supabase.from("plots").select("id").eq("garden_id", data.id).eq("user_id", userId);
+    const plotIds = (plots ?? []).map((p) => p.id);
+    if (plotIds.length) {
+      await supabase.from("garden_events").delete().in("plot_id", plotIds);
+      await supabase.from("plots").delete().in("id", plotIds);
+    }
+    const { error } = await supabase.from("gardens").delete().eq("id", data.id).eq("user_id", userId);
+    if (error) throw new Error(error.message);
+    return { ok: true };
+  });
+
+export const deletePlot = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((i: unknown) => z.object({ id: z.string().uuid() }).parse(i))
+  .handler(async ({ data, context }) => {
+    const { supabase, userId } = context;
+    await supabase.from("garden_events").delete().eq("plot_id", data.id);
+    const { error } = await supabase.from("plots").delete().eq("id", data.id).eq("user_id", userId);
+    if (error) throw new Error(error.message);
+    return { ok: true };
+  });
+
+// ---------- Admin actions ----------
+
+export const adminTopUpWallet = createServerFn({ method: "POST" })
+  .inputValidator((i: unknown) =>
+    z
+      .object({
+        user_id: z.string().uuid(),
+        amount_cents: z.number().int().positive(),
+        reason: z.string().optional(),
+      })
+      .parse(i),
+  )
+  .handler(async ({ data }) => {
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const { error } = await supabaseAdmin.from("wallet_transactions").insert({
+      user_id: data.user_id,
+      kind: "credit",
+      amount_cents: data.amount_cents,
+      reason: data.reason || "Admin wallet top-up",
+    });
+    if (error) throw new Error(error.message);
+    return { ok: true };
+  });
+
+export const adminDeleteFarmer = createServerFn({ method: "POST" })
+  .inputValidator((i: unknown) => z.object({ user_id: z.string().uuid() }).parse(i))
+  .handler(async ({ data }) => {
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const uid = data.user_id;
+    const { data: orders } = await supabaseAdmin.from("orders").select("id").eq("buyer_id", uid);
+    const orderIds = (orders ?? []).map((o) => o.id);
+    if (orderIds.length) await supabaseAdmin.from("order_items").delete().in("order_id", orderIds);
+    await supabaseAdmin.from("orders").delete().eq("buyer_id", uid);
+    await supabaseAdmin.from("garden_events").delete().eq("user_id", uid);
+    await supabaseAdmin.from("plots").delete().eq("user_id", uid);
+    await supabaseAdmin.from("gardens").delete().eq("user_id", uid);
+    await supabaseAdmin.from("diagnoses").delete().eq("user_id", uid);
+    await supabaseAdmin.from("wallet_transactions").delete().eq("user_id", uid);
+    await supabaseAdmin.from("consulting_requests").delete().eq("user_id", uid);
+    await supabaseAdmin.from("certificates").delete().eq("user_id", uid);
+    await supabaseAdmin.from("products").delete().eq("seller_id", uid);
+    await supabaseAdmin.from("profiles").delete().eq("id", uid);
+    try {
+      await supabaseAdmin.auth.admin.deleteUser(uid);
+    } catch (e) {
+      console.error("auth.admin.deleteUser failed", e);
+    }
+    return { ok: true };
+  });
+
+export const adminDeleteGarden = createServerFn({ method: "POST" })
+  .inputValidator((i: unknown) => z.object({ id: z.string().uuid() }).parse(i))
+  .handler(async ({ data }) => {
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const { data: plots } = await supabaseAdmin.from("plots").select("id").eq("garden_id", data.id);
+    const plotIds = (plots ?? []).map((p) => p.id);
+    if (plotIds.length) {
+      await supabaseAdmin.from("garden_events").delete().in("plot_id", plotIds);
+      await supabaseAdmin.from("plots").delete().in("id", plotIds);
+    }
+    const { error } = await supabaseAdmin.from("gardens").delete().eq("id", data.id);
+    if (error) throw new Error(error.message);
+    return { ok: true };
   });

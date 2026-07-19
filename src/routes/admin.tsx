@@ -1,8 +1,16 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { useSuspenseQuery, useQuery, queryOptions } from "@tanstack/react-query";
+import { useSuspenseQuery, useQuery, useMutation, useQueryClient, queryOptions } from "@tanstack/react-query";
+import { useServerFn } from "@tanstack/react-start";
 import { useState } from "react";
-import { getAdminOverview, getFarmerDetail } from "@/lib/farm.functions";
-import { X, Eye } from "lucide-react";
+import {
+  getAdminOverview,
+  getFarmerDetail,
+  adminDeleteFarmer,
+  adminDeleteGarden,
+  adminTopUpWallet,
+} from "@/lib/farm.functions";
+import { X, Eye, Trash2, Wallet } from "lucide-react";
+import { toast, Toaster } from "sonner";
 
 const overviewQueryOptions = queryOptions({
   queryKey: ["admin-overview"],
@@ -64,9 +72,11 @@ function AdminView() {
   const { data } = useSuspenseQuery(overviewQueryOptions);
   const current = NAV.find((n) => n.id === active)!;
   const [impersonateId, setImpersonateId] = useState<string | null>(null);
+  const [topUpId, setTopUpId] = useState<string | null>(null);
 
   return (
     <div className="min-h-screen bg-[color:var(--fn-bg)] text-[color:var(--fn-text)]">
+      <Toaster richColors position="top-center" />
       <header className="sticky top-0 z-20 flex items-center justify-between border-b border-[color:var(--fn-line)] bg-white px-6 py-3.5">
         <div className="flex items-center gap-3">
           <div className="grid h-[50px] w-[50px] place-items-center rounded-2xl bg-gradient-to-br from-[color:var(--fn-green)] to-[color:var(--fn-green-3)] font-black text-white">
@@ -131,11 +141,18 @@ function AdminView() {
             </span>
           </div>
 
-          <WebPanel screen={active} data={data} onImpersonate={setImpersonateId} />
+          <WebPanel screen={active} data={data} onImpersonate={setImpersonateId} onTopUp={setTopUpId} />
         </section>
       </main>
       {impersonateId ? (
         <ImpersonateModal userId={impersonateId} onClose={() => setImpersonateId(null)} />
+      ) : null}
+      {topUpId ? (
+        <TopUpModal
+          userId={topUpId}
+          farmerName={data.farmers.find((f) => f.id === topUpId)?.full_name ?? "Farmer"}
+          onClose={() => setTopUpId(null)}
+        />
       ) : null}
     </div>
   );
@@ -181,10 +198,12 @@ function WebPanel({
   screen,
   data,
   onImpersonate,
+  onTopUp,
 }: {
   screen: WebScreen;
   data: OverviewData;
   onImpersonate: (userId: string) => void;
+  onTopUp: (userId: string) => void;
 }) {
   if (screen === "dashboard") {
     const maxSignups = Math.max(1, ...data.signups7d.map((d) => d.count));
@@ -265,6 +284,13 @@ function WebPanel({
                     >
                       <Eye className="h-3 w-3" /> View as
                     </button>
+                    <button
+                      onClick={() => onTopUp(f.id)}
+                      className="ml-1 inline-flex items-center gap-1 rounded-full border border-[color:var(--fn-navy)] px-2.5 py-1 text-[11px] font-bold text-[color:var(--fn-navy)] hover:bg-slate-100"
+                    >
+                      <Wallet className="h-3 w-3" /> Top up
+                    </button>
+                    <DeleteFarmerButton userId={f.id} name={f.full_name} />
                   </td>
                 </tr>
               ))}
@@ -279,17 +305,19 @@ function WebPanel({
     return (
       <Panel title="Home gardens" empty={data.gardensList.length === 0}>
         {data.gardensList.map((g) => (
-          <Row
-            key={g.id}
-            left={
-              <>
-                <span className="font-semibold">{g.owner}</span>
-                <span className="text-[color:var(--fn-muted)]"> • {g.name} • {g.location}</span>
-              </>
-            }
-            right={g.crops.length ? g.crops.join(", ") : "no crops yet"}
-            status={g.growing > 0 ? `${g.growing} growing` : undefined}
-          />
+          <div key={g.id} className="flex items-center justify-between gap-2 border-b border-[#edf2ee] py-2.5 text-sm last:border-b-0">
+            <span className="min-w-0 flex-1 truncate">
+              <span className="font-semibold">{g.owner}</span>
+              <span className="text-[color:var(--fn-muted)]"> • {g.name} • {g.location}</span>
+            </span>
+            <span className="flex items-center gap-2">
+              <span className="text-[color:var(--fn-muted)]">{g.crops.length ? g.crops.join(", ") : "no crops yet"}</span>
+              {g.growing > 0 && (
+                <span className="rounded-full bg-[#e8f7ed] px-2 py-1 text-[11px] font-bold text-[color:var(--fn-green)]">{g.growing} growing</span>
+              )}
+              <DeleteGardenButton gardenId={g.id} name={g.name} />
+            </span>
+          </div>
         ))}
       </Panel>
     );
@@ -538,4 +566,108 @@ function Section({ title, children }: { title: string; children: React.ReactNode
 
 function Empty({ text }: { text: string }) {
   return <p className="rounded-xl bg-[color:var(--fn-light)] p-3 text-center text-xs text-[color:var(--fn-muted)]">{text}</p>;
+}
+
+function DeleteFarmerButton({ userId, name }: { userId: string; name: string }) {
+  const qc = useQueryClient();
+  const del = useMutation({
+    mutationFn: useServerFn(adminDeleteFarmer),
+    onSuccess: () => {
+      toast.success(`Deleted ${name}`);
+      qc.invalidateQueries({ queryKey: ["admin-overview"] });
+    },
+    onError: (e) => toast.error(e instanceof Error ? e.message : "Failed"),
+  });
+  return (
+    <button
+      disabled={del.isPending}
+      onClick={() => {
+        if (window.confirm(`Delete ${name} and ALL their data? This cannot be undone.`)) {
+          del.mutate({ data: { user_id: userId } });
+        }
+      }}
+      className="ml-1 inline-flex items-center gap-1 rounded-full border border-red-300 px-2.5 py-1 text-[11px] font-bold text-red-700 hover:bg-red-50 disabled:opacity-50"
+    >
+      <Trash2 className="h-3 w-3" /> Delete
+    </button>
+  );
+}
+
+function DeleteGardenButton({ gardenId, name }: { gardenId: string; name: string }) {
+  const qc = useQueryClient();
+  const del = useMutation({
+    mutationFn: useServerFn(adminDeleteGarden),
+    onSuccess: () => {
+      toast.success(`Deleted ${name}`);
+      qc.invalidateQueries({ queryKey: ["admin-overview"] });
+    },
+    onError: (e) => toast.error(e instanceof Error ? e.message : "Failed"),
+  });
+  return (
+    <button
+      disabled={del.isPending}
+      onClick={() => {
+        if (window.confirm(`Delete garden "${name}" and all its plots?`)) {
+          del.mutate({ data: { id: gardenId } });
+        }
+      }}
+      className="inline-flex items-center gap-1 rounded-full border border-red-300 px-2.5 py-1 text-[11px] font-bold text-red-700 hover:bg-red-50 disabled:opacity-50"
+    >
+      <Trash2 className="h-3 w-3" /> Delete
+    </button>
+  );
+}
+
+function TopUpModal({ userId, farmerName, onClose }: { userId: string; farmerName: string; onClose: () => void }) {
+  const qc = useQueryClient();
+  const [amount, setAmount] = useState("5000");
+  const [reason, setReason] = useState("Grant top-up");
+  const topUp = useMutation({
+    mutationFn: useServerFn(adminTopUpWallet),
+    onSuccess: () => {
+      toast.success(`Wallet topped up for ${farmerName}`);
+      qc.invalidateQueries({ queryKey: ["admin-overview"] });
+      qc.invalidateQueries({ queryKey: ["farmer-detail", userId] });
+      onClose();
+    },
+    onError: (e) => toast.error(e instanceof Error ? e.message : "Failed"),
+  });
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={onClose}>
+      <div className="w-full max-w-sm rounded-2xl bg-white p-5 shadow-2xl" onClick={(e) => e.stopPropagation()}>
+        <div className="mb-3 flex items-center justify-between">
+          <h3 className="text-base font-bold">Top up wallet</h3>
+          <button onClick={onClose} className="grid h-7 w-7 place-items-center rounded-full bg-black/60 text-white hover:bg-black">
+            <X className="h-3.5 w-3.5" />
+          </button>
+        </div>
+        <p className="mb-3 text-xs text-[color:var(--fn-muted)]">Adding funds to {farmerName}&apos;s wallet.</p>
+        <label className="block text-[11px] font-bold uppercase text-[color:var(--fn-muted)]">Amount (₦)</label>
+        <input
+          type="number"
+          min="1"
+          value={amount}
+          onChange={(e) => setAmount(e.target.value)}
+          className="mt-1 w-full rounded-xl border border-[color:var(--fn-line)] px-3 py-2 text-sm outline-none focus:border-[color:var(--fn-green)]"
+        />
+        <label className="mt-3 block text-[11px] font-bold uppercase text-[color:var(--fn-muted)]">Reason</label>
+        <input
+          value={reason}
+          onChange={(e) => setReason(e.target.value)}
+          className="mt-1 w-full rounded-xl border border-[color:var(--fn-line)] px-3 py-2 text-sm outline-none focus:border-[color:var(--fn-green)]"
+        />
+        <button
+          disabled={topUp.isPending || !(Number(amount) > 0)}
+          onClick={() =>
+            topUp.mutate({
+              data: { user_id: userId, amount_cents: Math.round(Number(amount) * 100), reason },
+            })
+          }
+          className="mt-4 w-full rounded-xl bg-[color:var(--fn-green)] py-2 text-sm font-extrabold text-white disabled:opacity-60"
+        >
+          {topUp.isPending ? "Processing…" : `Add ₦${Number(amount || 0).toLocaleString("en-NG")} to wallet`}
+        </button>
+      </div>
+    </div>
+  );
 }
