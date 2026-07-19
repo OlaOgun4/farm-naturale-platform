@@ -284,6 +284,13 @@ function WebPanel({
                     >
                       <Eye className="h-3 w-3" /> View as
                     </button>
+                    <button
+                      onClick={() => onTopUp(f.id)}
+                      className="ml-1 inline-flex items-center gap-1 rounded-full border border-[color:var(--fn-navy)] px-2.5 py-1 text-[11px] font-bold text-[color:var(--fn-navy)] hover:bg-slate-100"
+                    >
+                      <Wallet className="h-3 w-3" /> Top up
+                    </button>
+                    <DeleteFarmerButton userId={f.id} name={f.full_name} />
                   </td>
                 </tr>
               ))}
@@ -298,17 +305,19 @@ function WebPanel({
     return (
       <Panel title="Home gardens" empty={data.gardensList.length === 0}>
         {data.gardensList.map((g) => (
-          <Row
-            key={g.id}
-            left={
-              <>
-                <span className="font-semibold">{g.owner}</span>
-                <span className="text-[color:var(--fn-muted)]"> • {g.name} • {g.location}</span>
-              </>
-            }
-            right={g.crops.length ? g.crops.join(", ") : "no crops yet"}
-            status={g.growing > 0 ? `${g.growing} growing` : undefined}
-          />
+          <div key={g.id} className="flex items-center justify-between gap-2 border-b border-[#edf2ee] py-2.5 text-sm last:border-b-0">
+            <span className="min-w-0 flex-1 truncate">
+              <span className="font-semibold">{g.owner}</span>
+              <span className="text-[color:var(--fn-muted)]"> • {g.name} • {g.location}</span>
+            </span>
+            <span className="flex items-center gap-2">
+              <span className="text-[color:var(--fn-muted)]">{g.crops.length ? g.crops.join(", ") : "no crops yet"}</span>
+              {g.growing > 0 && (
+                <span className="rounded-full bg-[#e8f7ed] px-2 py-1 text-[11px] font-bold text-[color:var(--fn-green)]">{g.growing} growing</span>
+              )}
+              <DeleteGardenButton gardenId={g.id} name={g.name} />
+            </span>
+          </div>
         ))}
       </Panel>
     );
