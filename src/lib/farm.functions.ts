@@ -289,7 +289,11 @@ export const listProducts = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }) => {
     const { supabase } = context;
-    const { data } = await supabase.from("products").select("*").order("created_at", { ascending: false });
+    const { data } = await supabase
+      .from("products")
+      .select("*")
+      .or("title.ilike.%ginger%,category.ilike.%ginger%,description.ilike.%ginger%")
+      .order("created_at", { ascending: false });
     return data ?? [];
   });
 
@@ -309,6 +313,10 @@ export const createListing = createServerFn({ method: "POST" })
   )
   .handler(async ({ data, context }) => {
     const { supabase, userId } = context;
+    const hay = `${data.title} ${data.category} ${data.description}`.toLowerCase();
+    if (!hay.includes("ginger")) {
+      throw new Error("Marketplace only accepts ginger and ginger-related products. Please include 'ginger' in the title, category or description.");
+    }
     const { data: row, error } = await supabase
       .from("products")
       .insert({
