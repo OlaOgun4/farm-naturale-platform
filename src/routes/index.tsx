@@ -622,14 +622,34 @@ function DashboardScreen({ go }: { go: (s: ScreenId) => void }) {
   const { data } = useQuery({ queryKey: ["dashboard"], queryFn: () => fn() });
   const me = useQuery({ queryKey: ["me"], queryFn: useServerFn(getMe) });
   const name = me.data?.profile?.full_name ?? "Farmer";
+  const [editing, setEditing] = useState(false);
 
   return (
     <div className="space-y-4">
-      <div>
-        <p className="text-xs font-bold uppercase tracking-wide text-muted-foreground">Welcome,</p>
-        <h2 className="text-2xl font-black text-fn-green-2">{name.split(" ")[0]}!</h2>
-        <p className="mt-1 text-sm text-muted-foreground">Let&apos;s grow something great today.</p>
+      <div className="flex items-start justify-between gap-2">
+        <div>
+          <p className="text-xs font-bold uppercase tracking-wide text-muted-foreground">Welcome,</p>
+          <h2 className="text-2xl font-black text-fn-green-2">{name.split(" ")[0]}!</h2>
+          <p className="mt-1 text-sm text-muted-foreground">Let&apos;s grow something great today.</p>
+        </div>
+        <button
+          onClick={() => setEditing(true)}
+          className="rounded-full border border-border bg-card px-3 py-1.5 text-[11px] font-extrabold text-fn-navy hover:bg-secondary"
+        >
+          Edit profile
+        </button>
       </div>
+      {editing ? (
+        <ProfileEditor
+          initial={{
+            full_name: me.data?.profile?.full_name ?? "",
+            phone: (me.data?.profile as { phone?: string } | null)?.phone ?? "",
+            village: (me.data?.profile as { village?: string } | null)?.village ?? "",
+            land_size_acres: (me.data?.profile as { land_size_acres?: number } | null)?.land_size_acres ?? 0,
+          }}
+          onClose={() => setEditing(false)}
+        />
+      ) : null}
 
       <div className="grid grid-cols-2 gap-2">
         <StatCard label="Gardens" value={data?.gardens ?? 0} />
