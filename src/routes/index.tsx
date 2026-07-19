@@ -825,6 +825,10 @@ function PlotRow({ plot }: { plot: { id: string; crop: string; status: string; p
     }),
     onSuccess: () => qc.invalidateQueries(),
   });
+  const remove = useMutation({
+    mutationFn: useServerFn(deletePlot),
+    onSuccess: () => { toast.success("Plot removed"); qc.invalidateQueries(); },
+  });
   // Simpler: directly use useServerFn
   const logFn = useServerFn(
     // eslint-disable-next-line @typescript-eslint/no-require-imports
@@ -852,6 +856,12 @@ function PlotRow({ plot }: { plot: { id: string; crop: string; status: string; p
           className="rounded-md bg-primary px-2 py-1 text-[10px] font-extrabold text-primary-foreground"
         >
           Harvest
+        </button>
+        <button
+          onClick={() => { if (window.confirm("Remove this plot?")) remove.mutate({ data: { id: plot.id } }); }}
+          className="rounded-md border border-red-200 bg-red-50 px-2 py-1 text-[10px] font-extrabold text-red-700 hover:bg-red-100"
+        >
+          Delete
         </button>
       </div>
     </div>
