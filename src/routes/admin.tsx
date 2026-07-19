@@ -1,8 +1,16 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { useSuspenseQuery, useQuery, queryOptions } from "@tanstack/react-query";
+import { useSuspenseQuery, useQuery, useMutation, useQueryClient, queryOptions } from "@tanstack/react-query";
+import { useServerFn } from "@tanstack/react-start";
 import { useState } from "react";
-import { getAdminOverview, getFarmerDetail } from "@/lib/farm.functions";
-import { X, Eye } from "lucide-react";
+import {
+  getAdminOverview,
+  getFarmerDetail,
+  adminDeleteFarmer,
+  adminDeleteGarden,
+  adminTopUpWallet,
+} from "@/lib/farm.functions";
+import { X, Eye, Trash2, Wallet } from "lucide-react";
+import { toast, Toaster } from "sonner";
 
 const overviewQueryOptions = queryOptions({
   queryKey: ["admin-overview"],
