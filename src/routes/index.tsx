@@ -615,7 +615,10 @@ function DashboardScreen({ go }: { go: (s: ScreenId) => void }) {
   const fn = useServerFn(getDashboard);
   const { data } = useQuery({ queryKey: ["dashboard"], queryFn: () => fn() });
   const me = useQuery({ queryKey: ["me"], queryFn: useServerFn(getMe) });
-  const name = me.data?.profile?.full_name ?? "Farmer";
+  const profile = me.data?.profile as { full_name?: string | null; farm_name?: string | null } | null;
+  const farmName = profile?.farm_name?.trim();
+  const fullName = profile?.full_name?.trim();
+  const heading = farmName || fullName?.split(" ")[0] || "your farm";
   const [editing, setEditing] = useState(false);
 
   return (
@@ -623,7 +626,7 @@ function DashboardScreen({ go }: { go: (s: ScreenId) => void }) {
       <div className="flex items-start justify-between gap-2">
         <div>
           <p className="text-xs font-bold uppercase tracking-wide text-muted-foreground">Welcome,</p>
-          <h2 className="text-2xl font-black text-fn-green-2">{name.split(" ")[0]}!</h2>
+          <h2 className="text-2xl font-black text-fn-green-2">{heading}</h2>
           <p className="mt-1 text-sm text-muted-foreground">Let&apos;s grow something great today.</p>
         </div>
         <button
@@ -637,6 +640,7 @@ function DashboardScreen({ go }: { go: (s: ScreenId) => void }) {
         <ProfileEditor
           initial={{
             full_name: me.data?.profile?.full_name ?? "",
+            farm_name: (me.data?.profile as { farm_name?: string } | null)?.farm_name ?? "",
             phone: (me.data?.profile as { phone?: string } | null)?.phone ?? "",
             village: (me.data?.profile as { village?: string } | null)?.village ?? "",
             land_size_acres: (me.data?.profile as { land_size_acres?: number } | null)?.land_size_acres ?? 0,
