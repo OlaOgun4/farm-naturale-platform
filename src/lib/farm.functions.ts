@@ -29,6 +29,7 @@ export const getMe = createServerFn({ method: "GET" })
 
 const OnboardingSchema = z.object({
   full_name: z.string().min(1),
+  farm_name: z.string().optional().default(""),
   phone: z.string().optional().default(""),
   village: z.string().optional().default(""),
   land_size_acres: z.number().optional().default(0),
@@ -293,6 +294,7 @@ export const listProducts = createServerFn({ method: "GET" })
       .from("products")
       .select("*")
       .or("title.ilike.%ginger%,category.ilike.%ginger%,description.ilike.%ginger%")
+      .gt("stock", 0)
       .order("created_at", { ascending: false });
     return data ?? [];
   });
@@ -349,6 +351,8 @@ export const placeOrder = createServerFn({ method: "POST" })
       .single();
     if (pe || !product) throw new Error("Product not found");
 
+    if ((product.stock ?? 0) < data.qty) throw new Error("Sold out — this item is no longer available.");
+
     const total = product.price_cents * data.qty;
 
     // Check wallet
@@ -379,6 +383,13 @@ export const placeOrder = createServerFn({ method: "POST" })
       reason: `Order: ${product.title} × ${data.qty}`,
       ref_id: order.id,
     });
+
+    // Decrement product stock so sold-out items disappear from marketplace.
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    await supabaseAdmin
+      .from("products")
+      .update({ stock: Math.max(0, (product.stock ?? 0) - data.qty) })
+      .eq("id", product.id);
 
     return order;
   });
@@ -833,6 +844,7 @@ export const updateProfile = createServerFn({ method: "POST" })
     z
       .object({
         full_name: z.string().min(1).optional(),
+        farm_name: z.string().optional(),
         phone: z.string().optional(),
         village: z.string().optional(),
         land_size_acres: z.number().optional(),
