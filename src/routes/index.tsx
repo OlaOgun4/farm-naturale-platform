@@ -459,6 +459,7 @@ function SidePanel({ screen, me }: { screen: ScreenId; me: { profile: { full_nam
 function OnboardingScreen({ initialName }: { initialName: string }) {
   const qc = useQueryClient();
   const [full_name, setName] = useState(initialName);
+  const [farm_name, setFarmName] = useState("");
   const [phone, setPhone] = useState("");
   const [village, setVillage] = useState("");
   const [land, setLand] = useState("");
@@ -490,6 +491,12 @@ function OnboardingScreen({ initialName }: { initialName: string }) {
             placeholder="Your name"
             value={full_name}
             onChange={(e) => setName(e.target.value)}
+          />
+          <input
+            className="w-full rounded-xl border border-border bg-card px-3 py-3 text-sm outline-none focus:border-primary"
+            placeholder="Farm name (e.g. Green Roots Ginger Farm)"
+            value={farm_name}
+            onChange={(e) => setFarmName(e.target.value)}
           />
           <div className="grid grid-cols-2 gap-3">
             <input
@@ -560,6 +567,7 @@ function OnboardingScreen({ initialName }: { initialName: string }) {
               submit.mutate({
                 data: {
                   full_name,
+                  farm_name,
                   phone,
                   village,
                   land_size_acres: Number(land) || 0,
