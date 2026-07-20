@@ -151,12 +151,6 @@ function TopBar({ signedIn }: { signedIn: boolean }) {
         <span className="rounded-full bg-primary px-2.5 py-1.5 text-[11px] font-extrabold text-primary-foreground md:px-3 md:text-xs">
           Farmer App
         </span>
-        <Link
-          to="/admin"
-          className="rounded-full border border-border bg-card px-2.5 py-1.5 text-[11px] font-extrabold text-fn-navy transition-colors hover:bg-secondary md:px-3 md:text-xs"
-        >
-          Web Admin
-        </Link>
         {signedIn ? (
           <button
             onClick={async () => {
