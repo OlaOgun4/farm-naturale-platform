@@ -123,7 +123,7 @@ function RootComponent() {
     <QueryClientProvider client={queryClient}>
       <div
         aria-hidden
-        className="pointer-events-none fixed inset-0 -z-10 bg-cover bg-center bg-no-repeat opacity-[0.09]"
+        className="pointer-events-none fixed inset-0 -z-10 bg-cover bg-center bg-no-repeat opacity-[0.18]"
         style={{ backgroundImage: `url(${gingerBg})` }}
       />
       <div
@@ -131,7 +131,7 @@ function RootComponent() {
         className="pointer-events-none fixed inset-0 -z-10"
         style={{
           background:
-            "linear-gradient(135deg, oklch(0.985 0.026 95.3 / 0.6), oklch(0.958 0.016 150.2 / 0.85))",
+            "linear-gradient(135deg, oklch(0.985 0.026 95.3 / 0.45), oklch(0.958 0.016 150.2 / 0.7))",
         }}
       />
       {/* Required: nested routes render here. Removing <Outlet /> breaks all child routes. */}

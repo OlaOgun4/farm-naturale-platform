@@ -1,4 +1,4 @@
-import { createFileRoute, Link } from "@tanstack/react-router";
+import { createFileRoute } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import {
@@ -151,12 +151,6 @@ function TopBar({ signedIn }: { signedIn: boolean }) {
         <span className="rounded-full bg-primary px-2.5 py-1.5 text-[11px] font-extrabold text-primary-foreground md:px-3 md:text-xs">
           Farmer App
         </span>
-        <Link
-          to="/admin"
-          className="rounded-full border border-border bg-card px-2.5 py-1.5 text-[11px] font-extrabold text-fn-navy transition-colors hover:bg-secondary md:px-3 md:text-xs"
-        >
-          Web Admin
-        </Link>
         {signedIn ? (
           <button
             onClick={async () => {
@@ -179,7 +173,7 @@ function TopBar({ signedIn }: { signedIn: boolean }) {
 // ---------------------------------------------------------------------------
 
 function AuthScreen() {
-  const [mode, setMode] = useState<"signin" | "signup">("signup");
+  const [mode, setMode] = useState<"signin" | "signup">("signin");
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -300,13 +294,21 @@ function AuthScreen() {
             </button>
 
             <p className="mt-5 text-center text-xs text-muted-foreground">
-              {mode === "signup" ? "Already have an account?" : "New to Farm Naturale?"}{" "}
-              <button
-                onClick={() => setMode(mode === "signup" ? "signin" : "signup")}
-                className="font-extrabold text-primary"
-              >
-                {mode === "signup" ? "Sign in" : "Create account"}
-              </button>
+              {mode === "signup" ? (
+                <>
+                  Already have an account?{" "}
+                  <button onClick={() => setMode("signin")} className="font-extrabold text-primary">
+                    Sign in
+                  </button>
+                </>
+              ) : (
+                <>
+                  New here?{" "}
+                  <button onClick={() => setMode("signup")} className="font-semibold underline underline-offset-2 text-muted-foreground hover:text-fn-navy">
+                    Create an account
+                  </button>
+                </>
+              )}
             </p>
           </div>
         </div>
@@ -465,6 +467,7 @@ function SidePanel({ screen, me }: { screen: ScreenId; me: { profile: { full_nam
 function OnboardingScreen({ initialName }: { initialName: string }) {
   const qc = useQueryClient();
   const [full_name, setName] = useState(initialName);
+  const [farm_name, setFarmName] = useState("");
   const [phone, setPhone] = useState("");
   const [village, setVillage] = useState("");
   const [land, setLand] = useState("");
@@ -496,6 +499,12 @@ function OnboardingScreen({ initialName }: { initialName: string }) {
             placeholder="Your name"
             value={full_name}
             onChange={(e) => setName(e.target.value)}
+          />
+          <input
+            className="w-full rounded-xl border border-border bg-card px-3 py-3 text-sm outline-none focus:border-primary"
+            placeholder="Farm name (e.g. Green Roots Ginger Farm)"
+            value={farm_name}
+            onChange={(e) => setFarmName(e.target.value)}
           />
           <div className="grid grid-cols-2 gap-3">
             <input
@@ -566,6 +575,7 @@ function OnboardingScreen({ initialName }: { initialName: string }) {
               submit.mutate({
                 data: {
                   full_name,
+                  farm_name,
                   phone,
                   village,
                   land_size_acres: Number(land) || 0,
@@ -621,7 +631,10 @@ function DashboardScreen({ go }: { go: (s: ScreenId) => void }) {
   const fn = useServerFn(getDashboard);
   const { data } = useQuery({ queryKey: ["dashboard"], queryFn: () => fn() });
   const me = useQuery({ queryKey: ["me"], queryFn: useServerFn(getMe) });
-  const name = me.data?.profile?.full_name ?? "Farmer";
+  const profile = me.data?.profile as { full_name?: string | null; farm_name?: string | null } | null;
+  const farmName = profile?.farm_name?.trim();
+  const fullName = profile?.full_name?.trim();
+  const heading = farmName || fullName?.split(" ")[0] || "your farm";
   const [editing, setEditing] = useState(false);
 
   return (
@@ -629,7 +642,7 @@ function DashboardScreen({ go }: { go: (s: ScreenId) => void }) {
       <div className="flex items-start justify-between gap-2">
         <div>
           <p className="text-xs font-bold uppercase tracking-wide text-muted-foreground">Welcome,</p>
-          <h2 className="text-2xl font-black text-fn-green-2">{name.split(" ")[0]}!</h2>
+          <h2 className="text-2xl font-black text-fn-green-2">{heading}</h2>
           <p className="mt-1 text-sm text-muted-foreground">Let&apos;s grow something great today.</p>
         </div>
         <button
@@ -643,6 +656,7 @@ function DashboardScreen({ go }: { go: (s: ScreenId) => void }) {
         <ProfileEditor
           initial={{
             full_name: me.data?.profile?.full_name ?? "",
+            farm_name: (me.data?.profile as { farm_name?: string } | null)?.farm_name ?? "",
             phone: (me.data?.profile as { phone?: string } | null)?.phone ?? "",
             village: (me.data?.profile as { village?: string } | null)?.village ?? "",
             land_size_acres: (me.data?.profile as { land_size_acres?: number } | null)?.land_size_acres ?? 0,
@@ -708,11 +722,12 @@ function ProfileEditor({
   initial,
   onClose,
 }: {
-  initial: { full_name: string; phone: string; village: string; land_size_acres: number };
+  initial: { full_name: string; farm_name: string; phone: string; village: string; land_size_acres: number };
   onClose: () => void;
 }) {
   const qc = useQueryClient();
   const [full_name, setName] = useState(initial.full_name);
+  const [farm_name, setFarmName] = useState(initial.farm_name);
   const [phone, setPhone] = useState(initial.phone);
   const [village, setVillage] = useState(initial.village);
   const [land, setLand] = useState(String(initial.land_size_acres ?? ""));
@@ -731,6 +746,8 @@ function ProfileEditor({
       <div className="space-y-2">
         <input value={full_name} onChange={(e) => setName(e.target.value)} placeholder="Full name"
           className="w-full rounded-xl border border-border bg-card px-3 py-2 text-sm outline-none focus:border-primary" />
+        <input value={farm_name} onChange={(e) => setFarmName(e.target.value)} placeholder="Farm name"
+          className="w-full rounded-xl border border-border bg-card px-3 py-2 text-sm outline-none focus:border-primary" />
         <div className="grid grid-cols-2 gap-2">
           <input value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="Phone"
             className="w-full rounded-xl border border-border bg-card px-3 py-2 text-sm outline-none focus:border-primary" />
@@ -745,6 +762,7 @@ function ProfileEditor({
               save.mutate({
                 data: {
                   full_name: full_name || undefined,
+                  farm_name,
                   phone,
                   village,
                   land_size_acres: Number(land) || 0,
