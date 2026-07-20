@@ -706,11 +706,12 @@ function ProfileEditor({
   initial,
   onClose,
 }: {
-  initial: { full_name: string; phone: string; village: string; land_size_acres: number };
+  initial: { full_name: string; farm_name: string; phone: string; village: string; land_size_acres: number };
   onClose: () => void;
 }) {
   const qc = useQueryClient();
   const [full_name, setName] = useState(initial.full_name);
+  const [farm_name, setFarmName] = useState(initial.farm_name);
   const [phone, setPhone] = useState(initial.phone);
   const [village, setVillage] = useState(initial.village);
   const [land, setLand] = useState(String(initial.land_size_acres ?? ""));
@@ -729,6 +730,8 @@ function ProfileEditor({
       <div className="space-y-2">
         <input value={full_name} onChange={(e) => setName(e.target.value)} placeholder="Full name"
           className="w-full rounded-xl border border-border bg-card px-3 py-2 text-sm outline-none focus:border-primary" />
+        <input value={farm_name} onChange={(e) => setFarmName(e.target.value)} placeholder="Farm name"
+          className="w-full rounded-xl border border-border bg-card px-3 py-2 text-sm outline-none focus:border-primary" />
         <div className="grid grid-cols-2 gap-2">
           <input value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="Phone"
             className="w-full rounded-xl border border-border bg-card px-3 py-2 text-sm outline-none focus:border-primary" />
@@ -743,6 +746,7 @@ function ProfileEditor({
               save.mutate({
                 data: {
                   full_name: full_name || undefined,
+                  farm_name,
                   phone,
                   village,
                   land_size_acres: Number(land) || 0,
