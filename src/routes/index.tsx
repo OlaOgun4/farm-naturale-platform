@@ -294,13 +294,21 @@ function AuthScreen() {
             </button>
 
             <p className="mt-5 text-center text-xs text-muted-foreground">
-              {mode === "signup" ? "Already have an account?" : "New to Farm Naturale?"}{" "}
-              <button
-                onClick={() => setMode(mode === "signup" ? "signin" : "signup")}
-                className="font-extrabold text-primary"
-              >
-                {mode === "signup" ? "Sign in" : "Create account"}
-              </button>
+              {mode === "signup" ? (
+                <>
+                  Already have an account?{" "}
+                  <button onClick={() => setMode("signin")} className="font-extrabold text-primary">
+                    Sign in
+                  </button>
+                </>
+              ) : (
+                <>
+                  New here?{" "}
+                  <button onClick={() => setMode("signup")} className="font-semibold underline underline-offset-2 text-muted-foreground hover:text-fn-navy">
+                    Create an account
+                  </button>
+                </>
+              )}
             </p>
           </div>
         </div>
