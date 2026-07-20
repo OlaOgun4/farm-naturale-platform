@@ -92,12 +92,6 @@ function AdminView() {
           </div>
         </div>
         <nav className="flex items-center gap-2">
-          <Link
-            to="/"
-            className="rounded-full border border-[color:var(--fn-line)] px-3 py-1.5 text-xs font-semibold text-[color:var(--fn-navy)] hover:bg-[color:var(--fn-light)]"
-          >
-            Mobile App
-          </Link>
           <span className="rounded-full bg-[color:var(--fn-green)] px-3 py-1.5 text-xs font-semibold text-white">
             Web Admin
           </span>
