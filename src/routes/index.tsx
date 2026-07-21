@@ -133,10 +133,12 @@ function MobileApp() {
   }
 
   return (
-    <div className="min-h-screen bg-background text-foreground">
+    <div className="flex h-screen flex-col overflow-hidden bg-background text-foreground">
       <Toaster richColors position="top-center" />
       <TopBar signedIn={!!session} />
-      {!session ? <AuthScreen /> : <AppShell />}
+      <div className="flex min-h-0 flex-1 flex-col overflow-y-auto md:overflow-hidden">
+        {!session ? <AuthScreen /> : <AppShell />}
+      </div>
     </div>
   );
 }
@@ -368,7 +370,7 @@ function AppShell() {
   }
 
   return (
-    <main className="mx-auto grid max-w-[1180px] gap-5 px-3 py-4 pb-32 md:grid-cols-[240px_minmax(360px,430px)_300px] md:px-5 md:py-6">
+    <main className="mx-auto grid w-full max-w-[1180px] flex-1 gap-5 px-3 py-4 pb-32 md:grid-cols-[240px_minmax(360px,430px)_300px] md:px-5 md:py-6 md:min-h-0 md:overflow-hidden">
       <JourneyRail active={screen} onSelect={go} />
 
       <section className="mx-auto w-full max-w-[430px]">
@@ -377,7 +379,7 @@ function AppShell() {
             <span>{new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</span>
             <span aria-hidden>● ● ●</span>
           </div>
-          <div className="h-[720px] overflow-y-auto rounded-b-[30px] bg-fn-screen p-[18px] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+          <div className="h-[560px] overflow-y-auto rounded-b-[30px] bg-fn-screen p-[18px] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden md:h-[calc(100vh-200px)] md:max-h-[720px]">
             <ScreenView id={screen} go={go} />
           </div>
         </div>
