@@ -581,7 +581,10 @@ export const completeModule = createServerFn({ method: "POST" })
 
 // ---------- Admin overview (aggregate, demo) ----------
 
-export const getAdminOverview = createServerFn({ method: "GET" }).handler(async () => {
+export const getAdminOverview = createServerFn({ method: "GET" })
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context }) => {
+    await assertAdmin(context);
   const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
   const [
     { data: profiles },
