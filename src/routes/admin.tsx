@@ -452,10 +452,10 @@ function AuditPanel() {
             {rows.map((r) => (
               <tr key={r.id} className="border-t border-[color:var(--fn-line)]">
                 <td className="py-2 text-xs text-[color:var(--fn-muted)]">{new Date(r.created_at).toLocaleString()}</td>
-                <td className="text-xs">{r.actor_name ?? r.actor_id.slice(0, 8)}</td>
+                <td className="text-xs">{r.admin_name ?? r.admin_id.slice(0, 8)}</td>
                 <td className="text-xs font-semibold">{r.action}</td>
-                <td className="text-xs">{r.target_id ? r.target_id.slice(0, 8) : "—"}</td>
-                <td className="text-xs text-[color:var(--fn-muted)]">{r.detail ? JSON.stringify(r.detail) : ""}</td>
+                <td className="text-xs">{r.target_name ?? (r.target_id ? r.target_id.slice(0, 8) : "—")}</td>
+                <td className="text-xs text-[color:var(--fn-muted)]">{r.details ? JSON.stringify(r.details) : ""}</td>
               </tr>
             ))}
           </tbody>
