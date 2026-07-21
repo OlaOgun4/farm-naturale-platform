@@ -1116,10 +1116,14 @@ function DiagnosisScreen() {
 
       {(list.data?.length ?? 0) > 0 ? (
         <div>
-          <p className="mb-2 text-xs font-bold uppercase tracking-wide text-muted-foreground">History</p>
+          <p className="mb-2 text-xs font-bold uppercase tracking-wide text-muted-foreground">Case history — tap to review</p>
           <div className="space-y-2">
             {list.data!.map((d) => (
-              <div key={d.id} className="flex items-center gap-3 rounded-xl border border-border bg-card p-2">
+              <button
+                key={d.id}
+                onClick={() => setOpenCase(d)}
+                className="flex w-full items-center gap-3 rounded-xl border border-border bg-card p-2 text-left transition-colors hover:bg-fn-light"
+              >
                 {d.photo_url ? (
                   <img src={d.photo_url} alt="" className="h-12 w-12 rounded-lg object-cover" />
                 ) : (
@@ -1134,8 +1138,39 @@ function DiagnosisScreen() {
                 <span className="text-[10px] font-extrabold text-fn-navy">
                   {Math.round((d.confidence ?? 0) * 100)}%
                 </span>
-              </div>
+              </button>
             ))}
+          </div>
+        </div>
+      ) : null}
+
+      {openCase ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4" onClick={() => setOpenCase(null)}>
+          <div className="max-h-[85vh] w-full max-w-md overflow-y-auto rounded-2xl bg-card p-4 shadow-xl" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-start justify-between gap-2">
+              <div>
+                <p className="text-lg font-black text-fn-green-2">{openCase.disease}</p>
+                <p className="text-[11px] text-muted-foreground">{openCase.crop || "Ginger"} · {new Date(openCase.created_at).toLocaleString()}</p>
+              </div>
+              <button onClick={() => setOpenCase(null)} className="rounded-full bg-black/60 px-2 py-1 text-[10px] font-extrabold text-white">Close</button>
+            </div>
+            {openCase.photo_url ? <img src={openCase.photo_url} alt="" className="mt-3 w-full rounded-xl object-cover" /> : null}
+            <p className="mt-3 text-[11px] font-bold uppercase text-muted-foreground">
+              Severity: {openCase.severity} · {Math.round((openCase.confidence ?? 0) * 100)}% confident
+            </p>
+            {openCase.summary ? <p className="mt-2 text-sm">{openCase.summary}</p> : null}
+            {openCase.treatment ? (
+              <div className="mt-3">
+                <p className="text-[11px] font-bold uppercase text-muted-foreground">Recommended treatment</p>
+                <p className="text-sm">{openCase.treatment}</p>
+              </div>
+            ) : null}
+            {openCase.prevention ? (
+              <div className="mt-3">
+                <p className="text-[11px] font-bold uppercase text-muted-foreground">Prevention</p>
+                <p className="text-sm">{openCase.prevention}</p>
+              </div>
+            ) : null}
           </div>
         </div>
       ) : null}
