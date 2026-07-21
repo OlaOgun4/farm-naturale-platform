@@ -1454,6 +1454,42 @@ function OrdersScreen() {
 // ---------------------------------------------------------------------------
 
 function LearningScreen() {
+  return <LearningScreenInner />;
+}
+
+function HarvestsScreen() {
+  const list = useQuery({ queryKey: ["harvests"], queryFn: useServerFn(getHarvestHistory) });
+  const rows = list.data ?? [];
+  return (
+    <div className="space-y-3">
+      <div className="flex items-center gap-2">
+        <Package className="h-5 w-5 text-primary" />
+        <h2 className="text-xl font-black text-fn-green-2">Harvest history</h2>
+      </div>
+      <p className="text-xs text-muted-foreground">Every time you tap Harvest on a plot, it lands here.</p>
+      {rows.length === 0 ? (
+        <div className="rounded-2xl border border-dashed border-border bg-card p-6 text-center text-sm text-muted-foreground">
+          No harvests logged yet. Plant ginger in a garden, then tap Harvest when it's ready.
+        </div>
+      ) : (
+        <ol className="relative space-y-3 border-l-2 border-primary/30 pl-4">
+          {rows.map((h) => (
+            <li key={h.id} className="relative">
+              <span className="absolute -left-[22px] top-1.5 grid h-3 w-3 place-items-center rounded-full bg-primary ring-4 ring-background" />
+              <div className="rounded-xl border border-border bg-card p-3">
+                <p className="text-sm font-extrabold text-fn-green-2">{h.crop} · {h.garden}</p>
+                <p className="text-[11px] text-muted-foreground">{new Date(h.occurred_at).toLocaleString()}</p>
+                {h.note ? <p className="mt-1 text-xs text-foreground">{h.note}</p> : null}
+              </div>
+            </li>
+          ))}
+        </ol>
+      )}
+    </div>
+  );
+}
+
+function LearningScreenInner() {
   const qc = useQueryClient();
   const data = useQuery({ queryKey: ["modules"], queryFn: useServerFn(listModules) });
   const complete = useMutation({
