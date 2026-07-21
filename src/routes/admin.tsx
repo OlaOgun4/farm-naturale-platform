@@ -10,8 +10,10 @@ import {
   adminDeleteGarden,
   adminTopUpWallet,
   listAdminAudit,
+  checkIsAdmin,
+  claimAdmin,
 } from "@/lib/farm.functions";
-import { X, Eye, Trash2, Wallet } from "lucide-react";
+import { X, Eye, Trash2, Wallet, ShieldCheck } from "lucide-react";
 import { toast, Toaster } from "sonner";
 
 const overviewQueryOptions = queryOptions({
@@ -79,10 +81,65 @@ function rupees(cents: number) {
 
 function AdminView() {
   const [active, setActive] = useState<WebScreen>("dashboard");
-  const { data, isLoading, error } = useQuery(overviewQueryOptions);
+  const queryClient = useQueryClient();
+  const adminStatus = useQuery({
+    queryKey: ["admin-status"],
+    queryFn: () => checkIsAdmin(),
+    retry: false,
+  });
+  const { data, isLoading, error } = useQuery({
+    ...overviewQueryOptions,
+    enabled: adminStatus.data?.is_admin === true,
+    retry: false,
+  });
+  const claim = useMutation({
+    mutationFn: useServerFn(claimAdmin),
+    onSuccess: (result) => {
+      if (result.is_admin) {
+        toast.success("Admin access enabled");
+        queryClient.invalidateQueries({ queryKey: ["admin-status"] });
+        queryClient.invalidateQueries({ queryKey: ["admin-overview"] });
+      } else {
+        toast.error("Admin access is already assigned to another user");
+      }
+    },
+    onError: (e) => toast.error(e instanceof Error ? e.message : "Unable to claim admin access"),
+  });
   const current = NAV.find((n) => n.id === active)!;
   const [impersonateId, setImpersonateId] = useState<string | null>(null);
   const [topUpId, setTopUpId] = useState<string | null>(null);
+
+  if (adminStatus.isLoading) {
+    return (
+      <div className="grid min-h-screen place-items-center bg-[color:var(--fn-bg)] p-8 text-sm text-[color:var(--fn-muted)]">
+        Checking admin access…
+      </div>
+    );
+  }
+
+  if (adminStatus.error || adminStatus.data?.is_admin !== true) {
+    return (
+      <div className="min-h-screen bg-[color:var(--fn-bg)] p-6 text-[color:var(--fn-text)]">
+        <Toaster richColors position="top-center" />
+        <div className="mx-auto mt-20 max-w-lg rounded-2xl border border-[color:var(--fn-line)] bg-white p-6 text-center shadow-[0_12px_30px_rgba(22,60,35,0.08)]">
+          <div className="mx-auto grid h-14 w-14 place-items-center rounded-full bg-[color:var(--fn-light)] text-[color:var(--fn-green)]">
+            <ShieldCheck className="h-7 w-7" />
+          </div>
+          <h1 className="mt-4 text-2xl font-bold text-[color:var(--fn-green-2)]">Admin access required</h1>
+          <p className="mt-2 text-sm text-[color:var(--fn-muted)]">
+            This web admin is protected by server-side role checks. If this is the first admin setup for the demo, claim admin access below.
+          </p>
+          <button
+            disabled={claim.isPending}
+            onClick={() => claim.mutate({})}
+            className="mt-5 inline-flex items-center justify-center rounded-xl bg-[color:var(--fn-green)] px-5 py-2.5 text-sm font-extrabold text-white disabled:opacity-60"
+          >
+            {claim.isPending ? "Checking…" : "Claim first admin access"}
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   if (isLoading || !data) {
     return (
