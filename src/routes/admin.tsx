@@ -1,7 +1,7 @@
-import { createFileRoute, redirect } from "@tanstack/react-router";
+import { createFileRoute } from "@tanstack/react-router";
 import { useQuery, useMutation, useQueryClient, queryOptions } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import {
   getAdminOverview,
@@ -13,7 +13,7 @@ import {
   checkIsAdmin,
   claimAdmin,
 } from "@/lib/farm.functions";
-import { X, Eye, Trash2, Wallet, ShieldCheck } from "lucide-react";
+import { X, Eye, Trash2, Wallet, ShieldCheck, Loader2, LogOut } from "lucide-react";
 import { toast, Toaster } from "sonner";
 
 const overviewQueryOptions = queryOptions({
@@ -23,12 +23,6 @@ const overviewQueryOptions = queryOptions({
 
 export const Route = createFileRoute("/admin")({
   ssr: false,
-  beforeLoad: async () => {
-    const { data } = await supabase.auth.getUser();
-    if (!data.user) {
-      throw redirect({ to: "/" });
-    }
-  },
   head: () => ({
     meta: [
       { title: "Farm Naturale — Web Admin" },
@@ -50,6 +44,25 @@ export const Route = createFileRoute("/admin")({
   notFoundComponent: () => <div className="p-8">Not found.</div>,
   component: AdminView,
 });
+
+function useAdminSession() {
+  const [session, setSession] = useState<import("@supabase/supabase-js").Session | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data }) => {
+      setSession(data.session);
+      setLoading(false);
+    });
+    const { data: sub } = supabase.auth.onAuthStateChange((_evt, nextSession) => {
+      setSession(nextSession);
+      setLoading(false);
+    });
+    return () => sub.subscription.unsubscribe();
+  }, []);
+
+  return { session, loading };
+}
 
 type WebScreen =
   | "dashboard"
@@ -80,6 +93,85 @@ function rupees(cents: number) {
 }
 
 function AdminView() {
+  const { session, loading } = useAdminSession();
+
+  if (loading) {
+    return (
+      <div className="grid min-h-screen place-items-center bg-[color:var(--fn-bg)] p-8 text-[color:var(--fn-green-2)]">
+        <Loader2 className="h-8 w-8 animate-spin" />
+      </div>
+    );
+  }
+
+  if (!session) {
+    return <AdminAuthScreen />;
+  }
+
+  return <AdminWorkspace />;
+}
+
+function AdminAuthScreen() {
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [loading, setLoading] = useState(false);
+
+  async function submit(e: React.FormEvent) {
+    e.preventDefault();
+    setLoading(true);
+    try {
+      const { error } = await supabase.auth.signInWithPassword({ email, password });
+      if (error) throw error;
+      toast.success("Signed in to Web Admin");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Unable to sign in");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return (
+    <div className="grid min-h-screen place-items-center bg-[color:var(--fn-bg)] p-4 text-[color:var(--fn-text)]">
+      <Toaster richColors position="top-center" />
+      <section className="w-full max-w-md rounded-2xl border border-[color:var(--fn-line)] bg-white p-6 shadow-[0_12px_30px_rgba(22,60,35,0.08)]">
+        <div className="mb-6 text-center">
+          <div className="mx-auto grid h-16 w-16 place-items-center rounded-2xl bg-[color:var(--fn-green)] text-xl font-black text-white">
+            FN
+          </div>
+          <h1 className="mt-4 text-2xl font-black text-[color:var(--fn-green-2)]">Farm Naturale Web Admin</h1>
+          <p className="mt-1 text-sm text-[color:var(--fn-muted)]">Sign in with an admin account to manage the platform.</p>
+        </div>
+        <form onSubmit={submit} className="space-y-3">
+          <input
+            required
+            type="email"
+            placeholder="Admin email"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            className="w-full rounded-xl border border-[color:var(--fn-line)] bg-white px-3 py-3 text-sm outline-none focus:border-[color:var(--fn-green)]"
+          />
+          <input
+            required
+            type="password"
+            placeholder="Password"
+            minLength={6}
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            className="w-full rounded-xl border border-[color:var(--fn-line)] bg-white px-3 py-3 text-sm outline-none focus:border-[color:var(--fn-green)]"
+          />
+          <button
+            disabled={loading}
+            type="submit"
+            className="grid w-full place-items-center rounded-xl bg-[color:var(--fn-green)] py-3 text-sm font-extrabold text-white disabled:opacity-60"
+          >
+            {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : "Sign in to Admin"}
+          </button>
+        </form>
+      </section>
+    </div>
+  );
+}
+
+function AdminWorkspace() {
   const [active, setActive] = useState<WebScreen>("dashboard");
   const queryClient = useQueryClient();
   const adminStatus = useQuery({
@@ -175,6 +267,18 @@ function AdminView() {
           <span className="rounded-full bg-[color:var(--fn-green)] px-3 py-1.5 text-xs font-semibold text-white">
             Web Admin
           </span>
+          <button
+            onClick={async () => {
+              await queryClient.cancelQueries();
+              queryClient.clear();
+              await supabase.auth.signOut();
+              toast.success("Signed out");
+            }}
+            className="grid h-9 w-9 place-items-center rounded-full border border-[color:var(--fn-line)] bg-white text-[color:var(--fn-navy)] transition-colors hover:bg-[color:var(--fn-light)]"
+            aria-label="Sign out of admin"
+          >
+            <LogOut className="h-4 w-4" />
+          </button>
         </nav>
       </header>
 
