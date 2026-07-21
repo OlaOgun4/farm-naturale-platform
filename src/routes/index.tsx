@@ -440,6 +440,7 @@ function SidePanel({ screen, me }: { screen: ScreenId; me: { profile: { full_nam
     sell: "List your harvest — buyers pay from their wallet, you get credited automatically.",
     wallet: "Every purchase debits, every sale credits. Payout to bank is simulated.",
     orders: "Order history with itemized receipts.",
+    harvests: "Every harvest you log becomes a timeline entry — and unlocks selling on the marketplace.",
     learning: "Complete a short module to earn a shareable certificate.",
     certificates: "Every certificate has a unique verification code.",
   };
