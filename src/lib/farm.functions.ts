@@ -2,6 +2,30 @@ import { createServerFn } from "@tanstack/react-start";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { z } from "zod";
 
+// ---------- Admin helpers ----------
+
+type AuthCtx = { supabase: import("@supabase/supabase-js").SupabaseClient; userId: string };
+
+async function assertAdmin(context: AuthCtx) {
+  const { data, error } = await context.supabase.rpc("has_role", {
+    _user_id: context.userId,
+    _role: "admin",
+  });
+  if (error) throw new Error("Permission check failed");
+  if (!data) throw new Error("Forbidden: admin only");
+}
+
+async function logAdmin(adminId: string, action: string, targetType: string, targetId: string, details: unknown) {
+  const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+  await supabaseAdmin.from("admin_audit_log").insert({
+    admin_id: adminId,
+    action,
+    target_type: targetType,
+    target_id: targetId,
+    details: details as never,
+  });
+}
+
 // ---------- Profile ----------
 
 export const getMe = createServerFn({ method: "GET" })
