@@ -419,12 +419,23 @@ export const placeOrder = createServerFn({ method: "POST" })
 
     // Decrement product stock so sold-out items disappear from marketplace.
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const remainingStock = Math.max(0, (product.stock ?? 0) - data.qty);
     await supabaseAdmin
       .from("products")
-      .update({ stock: Math.max(0, (product.stock ?? 0) - data.qty) })
+      .update({ stock: remainingStock })
       .eq("id", product.id);
 
-    return order;
+    return {
+      ...order,
+      receipt: {
+        product_title: product.title,
+        unit: product.unit,
+        unit_price_cents: product.price_cents,
+        qty: data.qty,
+        total_cents: total,
+        remaining_stock: remainingStock,
+      },
+    };
   });
 
 export const listOrders = createServerFn({ method: "GET" })
