@@ -114,14 +114,30 @@ function AdminAuthScreen() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
+  const [mode, setMode] = useState<"signin" | "signup">("signin");
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     setLoading(true);
     try {
-      const { error } = await supabase.auth.signInWithPassword({ email, password });
-      if (error) throw error;
-      toast.success("Signed in to Web Admin");
+      if (mode === "signup") {
+        const { data, error } = await supabase.auth.signUp({
+          email,
+          password,
+          options: { emailRedirectTo: `${window.location.origin}/admin` },
+        });
+        if (error) throw error;
+        if (!data.session) {
+          toast.success("Account created. Check your email to confirm, then sign in.");
+          setMode("signin");
+          return;
+        }
+        toast.success("Account created. Claim admin access on the next screen.");
+      } else {
+        const { error } = await supabase.auth.signInWithPassword({ email, password });
+        if (error) throw error;
+        toast.success("Signed in to Web Admin");
+      }
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Unable to sign in");
     } finally {
@@ -138,7 +154,11 @@ function AdminAuthScreen() {
             FN
           </div>
           <h1 className="mt-4 text-2xl font-black text-[color:var(--fn-green-2)]">Farm Naturale Web Admin</h1>
-          <p className="mt-1 text-sm text-[color:var(--fn-muted)]">Sign in with an admin account to manage the platform.</p>
+          <p className="mt-1 text-sm text-[color:var(--fn-muted)]">
+            {mode === "signin"
+              ? "Sign in with an admin account to manage the platform."
+              : "Create the first admin account. You'll claim admin access after signing in."}
+          </p>
         </div>
         <form onSubmit={submit} className="space-y-3">
           <input
@@ -163,9 +183,24 @@ function AdminAuthScreen() {
             type="submit"
             className="grid w-full place-items-center rounded-xl bg-[color:var(--fn-green)] py-3 text-sm font-extrabold text-white disabled:opacity-60"
           >
-            {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : "Sign in to Admin"}
+            {loading ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : mode === "signin" ? (
+              "Sign in to Admin"
+            ) : (
+              "Create admin account"
+            )}
           </button>
         </form>
+        <button
+          type="button"
+          onClick={() => setMode(mode === "signin" ? "signup" : "signin")}
+          className="mt-4 w-full text-center text-xs font-semibold text-[color:var(--fn-green-2)] hover:underline"
+        >
+          {mode === "signin"
+            ? "First-time setup? Create the initial admin account"
+            : "Already have an account? Sign in"}
+        </button>
       </section>
     </div>
   );
