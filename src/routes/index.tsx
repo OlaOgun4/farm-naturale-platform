@@ -812,6 +812,7 @@ function GardenScreen() {
   const qc = useQueryClient();
   const fn = useServerFn(listGardens);
   const { data } = useQuery({ queryKey: ["gardens"], queryFn: () => fn() });
+  const reminders = useQuery({ queryKey: ["water-reminders"], queryFn: useServerFn(getWaterReminders) });
   const [newName, setNewName] = useState("");
   const [newCrop, setNewCrop] = useState<Record<string, string>>({});
   const create = useMutation({ mutationFn: useServerFn(createGarden), onSuccess: () => { setNewName(""); qc.invalidateQueries({ queryKey: ["gardens"] }); qc.invalidateQueries({ queryKey: ["dashboard"] }); } });
@@ -830,6 +831,22 @@ function GardenScreen() {
   return (
     <div className="space-y-3">
       <h2 className="text-xl font-black text-fn-green-2">My Home Garden</h2>
+
+      {(reminders.data ?? []).some((r) => r.due) ? (
+        <div className="rounded-2xl border border-fn-gold/40 bg-fn-cream p-3">
+          <p className="text-xs font-extrabold uppercase tracking-wide text-fn-navy">💧 Watering reminders</p>
+          <ul className="mt-2 space-y-1">
+            {reminders.data!.filter((r) => r.due).map((r) => (
+              <li key={r.plot_id} className="flex items-center justify-between text-[11px]">
+                <span className="font-extrabold text-fn-green-2">{r.crop} · {r.garden}</span>
+                <span className="text-muted-foreground">
+                  {r.last_watered_at ? `${r.days_since}d since last water` : `not watered yet · ${r.days_since}d`}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
 
       <div className="rounded-2xl border border-border bg-card p-3">
         <p className="text-xs font-bold uppercase tracking-wide text-muted-foreground">Add a new garden</p>
@@ -1204,10 +1221,12 @@ function MarketScreen({ go: _go }: { go: (s: ScreenId) => void }) {
   void _go;
   const qc = useQueryClient();
   const products = useQuery({ queryKey: ["products"], queryFn: useServerFn(listProducts) });
+  const [receipt, setReceipt] = useState<null | { product_title: string; unit: string; unit_price_cents: number; qty: number; total_cents: number; remaining_stock: number }>(null);
   const buy = useMutation({
     mutationFn: useServerFn(placeOrder),
-    onSuccess: () => {
-      toast.success("Order placed! Check My Orders.");
+    onSuccess: (res) => {
+      const r = (res as { receipt?: typeof receipt }).receipt;
+      if (r) setReceipt(r);
       qc.invalidateQueries();
     },
     onError: (e) => toast.error(e instanceof Error ? e.message : "Purchase failed"),
@@ -1223,6 +1242,22 @@ function MarketScreen({ go: _go }: { go: (s: ScreenId) => void }) {
         <ShoppingCart className="h-5 w-5 text-primary" />
         <h2 className="text-xl font-black text-fn-green-2">Marketplace</h2>
       </div>
+
+      {receipt ? (
+        <div className="rounded-2xl border border-primary/40 bg-fn-light p-3">
+          <div className="flex items-center justify-between">
+            <p className="text-xs font-extrabold uppercase text-primary">✅ Purchase confirmed</p>
+            <button onClick={() => setReceipt(null)} className="text-[11px] font-extrabold text-fn-navy underline">Dismiss</button>
+          </div>
+          <p className="mt-2 text-sm font-extrabold text-fn-green-2">{receipt.product_title}</p>
+          <div className="mt-2 space-y-1 text-xs text-foreground">
+            <p className="flex justify-between"><span className="text-muted-foreground">Quantity</span><span className="font-bold">{receipt.qty} {receipt.unit}</span></p>
+            <p className="flex justify-between"><span className="text-muted-foreground">Unit price</span><span className="font-bold">₦{(receipt.unit_price_cents/100).toFixed(0)}</span></p>
+            <p className="flex justify-between border-t border-border pt-1"><span className="text-muted-foreground">Total paid</span><span className="font-black text-fn-navy">₦{(receipt.total_cents/100).toFixed(0)}</span></p>
+            <p className="flex justify-between"><span className="text-muted-foreground">Remaining stock</span><span className="font-bold">{receipt.remaining_stock} {receipt.unit}{receipt.remaining_stock === 0 ? " (sold out)" : ""}</span></p>
+          </div>
+        </div>
+      ) : null}
 
       <div className="flex items-center gap-2 rounded-xl border border-border bg-card px-3">
         <Search className="h-4 w-4 text-muted-foreground" />
