@@ -32,6 +32,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { lovable } from "@/integrations/lovable";
 import {
   addPlot,
+  claimAdmin,
   completeModule,
   completeOnboarding,
   createGarden,
@@ -40,7 +41,9 @@ import {
   deletePlot,
   diagnoseCropPhoto,
   getDashboard,
+  getHarvestHistory,
   getMe,
+  getWaterReminders,
   getWallet,
   listConsultingRequests,
   listDiagnoses,
@@ -48,6 +51,7 @@ import {
   listModules,
   listOrders,
   listProducts,
+  logGardenEvent,
   placeOrder,
   requestPayout,
   submitConsultingRequest,
@@ -86,11 +90,13 @@ type ScreenId =
   | "sell"
   | "wallet"
   | "certificates"
+  | "harvests"
   | "orders";
 
 const JOURNEY: { id: ScreenId; label: string; icon: LucideIcon }[] = [
   { id: "dashboard", label: "Dashboard", icon: Sprout },
   { id: "garden", label: "My Garden", icon: Leaf },
+  { id: "harvests", label: "Harvests", icon: Package },
   { id: "diagnosis", label: "AI Crop Doctor", icon: Stethoscope },
   { id: "consult", label: "Consult Expert", icon: MessageCircle },
   { id: "market", label: "Marketplace", icon: ShoppingCart },
@@ -127,10 +133,12 @@ function MobileApp() {
   }
 
   return (
-    <div className="min-h-screen bg-background text-foreground">
+    <div className="flex h-screen flex-col overflow-hidden bg-background text-foreground">
       <Toaster richColors position="top-center" />
       <TopBar signedIn={!!session} />
-      {!session ? <AuthScreen /> : <AppShell />}
+      <div className="flex min-h-0 flex-1 flex-col overflow-y-auto md:overflow-hidden">
+        {!session ? <AuthScreen /> : <AppShell />}
+      </div>
     </div>
   );
 }
@@ -178,13 +186,14 @@ function AuthScreen() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
+  const [pendingVerify, setPendingVerify] = useState<string | null>(null);
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     setLoading(true);
     try {
       if (mode === "signup") {
-        const { error } = await supabase.auth.signUp({
+        const { data: signRes, error } = await supabase.auth.signUp({
           email,
           password,
           options: {
@@ -193,7 +202,12 @@ function AuthScreen() {
           },
         });
         if (error) throw error;
-        toast.success("Welcome to Farm Naturale!");
+        if (!signRes.session) {
+          setPendingVerify(email);
+          toast.success("Check your email to verify your account");
+        } else {
+          toast.success("Welcome to Farm Naturale!");
+        }
       } else {
         const { error } = await supabase.auth.signInWithPassword({ email, password });
         if (error) throw error;
@@ -226,6 +240,14 @@ function AuthScreen() {
       <section className="mx-auto w-full max-w-[430px]">
         <div className="rounded-[44px] bg-fn-phone p-[13px] shadow-fn-phone">
           <div className="rounded-[30px] bg-fn-screen p-6">
+            {pendingVerify ? (
+              <div className="mb-4 rounded-xl border border-fn-gold/40 bg-fn-cream p-3 text-center">
+                <p className="text-sm font-extrabold text-fn-green-2">📧 Verify your email</p>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  We sent a confirmation link to <span className="font-bold text-fn-navy">{pendingVerify}</span>. Click it, then sign in.
+                </p>
+              </div>
+            ) : null}
             <div className="mb-5 flex flex-col items-center gap-2 pt-4 text-center">
               <div className="grid h-16 w-16 place-items-center rounded-2xl bg-primary text-2xl font-black text-primary-foreground">
                 FN
@@ -348,7 +370,7 @@ function AppShell() {
   }
 
   return (
-    <main className="mx-auto grid max-w-[1180px] gap-5 px-3 py-4 pb-32 md:grid-cols-[240px_minmax(360px,430px)_300px] md:px-5 md:py-6">
+    <main className="mx-auto grid w-full max-w-[1180px] flex-1 gap-5 px-3 py-4 pb-32 md:grid-cols-[240px_minmax(360px,430px)_300px] md:px-5 md:py-6 md:min-h-0 md:overflow-hidden">
       <JourneyRail active={screen} onSelect={go} />
 
       <section className="mx-auto w-full max-w-[430px]">
@@ -357,7 +379,7 @@ function AppShell() {
             <span>{new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</span>
             <span aria-hidden>● ● ●</span>
           </div>
-          <div className="h-[720px] overflow-y-auto rounded-b-[30px] bg-fn-screen p-[18px] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+          <div className="h-[560px] overflow-y-auto rounded-b-[30px] bg-fn-screen p-[18px] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden md:h-[calc(100vh-200px)] md:max-h-[720px]">
             <ScreenView id={screen} go={go} />
           </div>
         </div>
@@ -434,6 +456,7 @@ function SidePanel({ screen, me }: { screen: ScreenId; me: { profile: { full_nam
     sell: "List your harvest — buyers pay from their wallet, you get credited automatically.",
     wallet: "Every purchase debits, every sale credits. Payout to bank is simulated.",
     orders: "Order history with itemized receipts.",
+    harvests: "Every harvest you log becomes a timeline entry — and unlocks selling on the marketplace.",
     learning: "Complete a short module to earn a shareable certificate.",
     certificates: "Every certificate has a unique verification code.",
   };
@@ -616,6 +639,8 @@ function ScreenView({ id, go }: { id: ScreenId; go: (s: ScreenId) => void }) {
       return <WalletScreen />;
     case "orders":
       return <OrdersScreen />;
+    case "harvests":
+      return <HarvestsScreen />;
     case "learning":
       return <LearningScreen />;
     case "certificates":
@@ -803,6 +828,7 @@ function GardenScreen() {
   const qc = useQueryClient();
   const fn = useServerFn(listGardens);
   const { data } = useQuery({ queryKey: ["gardens"], queryFn: () => fn() });
+  const reminders = useQuery({ queryKey: ["water-reminders"], queryFn: useServerFn(getWaterReminders) });
   const [newName, setNewName] = useState("");
   const [newCrop, setNewCrop] = useState<Record<string, string>>({});
   const create = useMutation({ mutationFn: useServerFn(createGarden), onSuccess: () => { setNewName(""); qc.invalidateQueries({ queryKey: ["gardens"] }); qc.invalidateQueries({ queryKey: ["dashboard"] }); } });
@@ -821,6 +847,22 @@ function GardenScreen() {
   return (
     <div className="space-y-3">
       <h2 className="text-xl font-black text-fn-green-2">My Home Garden</h2>
+
+      {(reminders.data ?? []).some((r) => r.due) ? (
+        <div className="rounded-2xl border border-fn-gold/40 bg-fn-cream p-3">
+          <p className="text-xs font-extrabold uppercase tracking-wide text-fn-navy">💧 Watering reminders</p>
+          <ul className="mt-2 space-y-1">
+            {reminders.data!.filter((r) => r.due).map((r) => (
+              <li key={r.plot_id} className="flex items-center justify-between text-[11px]">
+                <span className="font-extrabold text-fn-green-2">{r.crop} · {r.garden}</span>
+                <span className="text-muted-foreground">
+                  {r.last_watered_at ? `${r.days_since}d since last water` : `not watered yet · ${r.days_since}d`}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
 
       <div className="rounded-2xl border border-border bg-card p-3">
         <p className="text-xs font-bold uppercase tracking-wide text-muted-foreground">Add a new garden</p>
@@ -917,24 +959,19 @@ function GardenScreen() {
 
 function PlotRow({ plot }: { plot: { id: string; crop: string; status: string; planted_on: string } }) {
   const qc = useQueryClient();
+  const logFn = useServerFn(logGardenEvent);
   const log = useMutation({
-    mutationFn: useServerFn(async (input: { plot_id: string; kind: string; note?: string }) => {
-      const { logGardenEvent } = await import("@/lib/farm.functions");
-      return logGardenEvent({ data: input });
-    }),
-    onSuccess: () => qc.invalidateQueries(),
+    mutationFn: (input: { plot_id: string; kind: string; note?: string }) => logFn({ data: input }),
+    onSuccess: (_res, vars) => {
+      toast.success(vars.kind === "watered" ? "Watering logged" : "Harvest logged");
+      qc.invalidateQueries();
+    },
+    onError: (e) => toast.error(e instanceof Error ? e.message : "Action failed"),
   });
   const remove = useMutation({
     mutationFn: useServerFn(deletePlot),
     onSuccess: () => { toast.success("Plot removed"); qc.invalidateQueries(); },
   });
-  // Simpler: directly use useServerFn
-  const logFn = useServerFn(
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    (globalThis as unknown as Record<string, unknown>) as never,
-  );
-  // Not using logFn — the mutation above works via dynamic import
-  void logFn;
   return (
     <div className="flex items-center justify-between rounded-lg bg-fn-light px-2 py-1.5">
       <div>
@@ -945,13 +982,15 @@ function PlotRow({ plot }: { plot: { id: string; crop: string; status: string; p
       </div>
       <div className="flex gap-1">
         <button
-          onClick={() => log.mutate({ plot_id: plot.id, kind: "watered" })}
+          onClick={() => log.mutate({ plot_id: plot.id, kind: "watered", note: "Watered" })}
+          disabled={log.isPending}
           className="rounded-md bg-card px-2 py-1 text-[10px] font-extrabold text-fn-navy hover:bg-secondary"
         >
           Water
         </button>
         <button
           onClick={() => log.mutate({ plot_id: plot.id, kind: "harvested", note: "Harvested" })}
+          disabled={log.isPending || plot.status === "harvested"}
           className="rounded-md bg-primary px-2 py-1 text-[10px] font-extrabold text-primary-foreground"
         >
           Harvest
@@ -981,6 +1020,7 @@ function DiagnosisScreen() {
   const [crop, setCrop] = useState("");
   const [busy, setBusy] = useState(false);
   const [dataUrl, setDataUrl] = useState<string | null>(null);
+  const [openCase, setOpenCase] = useState<null | (typeof list.data extends (infer U)[] | undefined ? U : never)>(null);
   const [latest, setLatest] = useState<null | {
     disease: string | null; confidence: number | null; severity: string | null; treatment: string | null; prevention: string | null; summary: string | null;
   }>(null);
@@ -1092,10 +1132,14 @@ function DiagnosisScreen() {
 
       {(list.data?.length ?? 0) > 0 ? (
         <div>
-          <p className="mb-2 text-xs font-bold uppercase tracking-wide text-muted-foreground">History</p>
+          <p className="mb-2 text-xs font-bold uppercase tracking-wide text-muted-foreground">Case history — tap to review</p>
           <div className="space-y-2">
             {list.data!.map((d) => (
-              <div key={d.id} className="flex items-center gap-3 rounded-xl border border-border bg-card p-2">
+              <button
+                key={d.id}
+                onClick={() => setOpenCase(d)}
+                className="flex w-full items-center gap-3 rounded-xl border border-border bg-card p-2 text-left transition-colors hover:bg-fn-light"
+              >
                 {d.photo_url ? (
                   <img src={d.photo_url} alt="" className="h-12 w-12 rounded-lg object-cover" />
                 ) : (
@@ -1110,8 +1154,39 @@ function DiagnosisScreen() {
                 <span className="text-[10px] font-extrabold text-fn-navy">
                   {Math.round((d.confidence ?? 0) * 100)}%
                 </span>
-              </div>
+              </button>
             ))}
+          </div>
+        </div>
+      ) : null}
+
+      {openCase ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4" onClick={() => setOpenCase(null)}>
+          <div className="max-h-[85vh] w-full max-w-md overflow-y-auto rounded-2xl bg-card p-4 shadow-xl" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-start justify-between gap-2">
+              <div>
+                <p className="text-lg font-black text-fn-green-2">{openCase.disease}</p>
+                <p className="text-[11px] text-muted-foreground">{openCase.crop || "Ginger"} · {new Date(openCase.created_at).toLocaleString()}</p>
+              </div>
+              <button onClick={() => setOpenCase(null)} className="rounded-full bg-black/60 px-2 py-1 text-[10px] font-extrabold text-white">Close</button>
+            </div>
+            {openCase.photo_url ? <img src={openCase.photo_url} alt="" className="mt-3 w-full rounded-xl object-cover" /> : null}
+            <p className="mt-3 text-[11px] font-bold uppercase text-muted-foreground">
+              Severity: {openCase.severity} · {Math.round((openCase.confidence ?? 0) * 100)}% confident
+            </p>
+            {openCase.summary ? <p className="mt-2 text-sm">{openCase.summary}</p> : null}
+            {openCase.treatment ? (
+              <div className="mt-3">
+                <p className="text-[11px] font-bold uppercase text-muted-foreground">Recommended treatment</p>
+                <p className="text-sm">{openCase.treatment}</p>
+              </div>
+            ) : null}
+            {openCase.prevention ? (
+              <div className="mt-3">
+                <p className="text-[11px] font-bold uppercase text-muted-foreground">Prevention</p>
+                <p className="text-sm">{openCase.prevention}</p>
+              </div>
+            ) : null}
           </div>
         </div>
       ) : null}
@@ -1198,10 +1273,12 @@ function MarketScreen({ go: _go }: { go: (s: ScreenId) => void }) {
   void _go;
   const qc = useQueryClient();
   const products = useQuery({ queryKey: ["products"], queryFn: useServerFn(listProducts) });
+  const [receipt, setReceipt] = useState<null | { product_title: string; unit: string; unit_price_cents: number; qty: number; total_cents: number; remaining_stock: number }>(null);
   const buy = useMutation({
     mutationFn: useServerFn(placeOrder),
-    onSuccess: () => {
-      toast.success("Order placed! Check My Orders.");
+    onSuccess: (res) => {
+      const r = (res as { receipt?: typeof receipt }).receipt;
+      if (r) setReceipt(r);
       qc.invalidateQueries();
     },
     onError: (e) => toast.error(e instanceof Error ? e.message : "Purchase failed"),
@@ -1217,6 +1294,22 @@ function MarketScreen({ go: _go }: { go: (s: ScreenId) => void }) {
         <ShoppingCart className="h-5 w-5 text-primary" />
         <h2 className="text-xl font-black text-fn-green-2">Marketplace</h2>
       </div>
+
+      {receipt ? (
+        <div className="rounded-2xl border border-primary/40 bg-fn-light p-3">
+          <div className="flex items-center justify-between">
+            <p className="text-xs font-extrabold uppercase text-primary">✅ Purchase confirmed</p>
+            <button onClick={() => setReceipt(null)} className="text-[11px] font-extrabold text-fn-navy underline">Dismiss</button>
+          </div>
+          <p className="mt-2 text-sm font-extrabold text-fn-green-2">{receipt.product_title}</p>
+          <div className="mt-2 space-y-1 text-xs text-foreground">
+            <p className="flex justify-between"><span className="text-muted-foreground">Quantity</span><span className="font-bold">{receipt.qty} {receipt.unit}</span></p>
+            <p className="flex justify-between"><span className="text-muted-foreground">Unit price</span><span className="font-bold">₦{(receipt.unit_price_cents/100).toFixed(0)}</span></p>
+            <p className="flex justify-between border-t border-border pt-1"><span className="text-muted-foreground">Total paid</span><span className="font-black text-fn-navy">₦{(receipt.total_cents/100).toFixed(0)}</span></p>
+            <p className="flex justify-between"><span className="text-muted-foreground">Remaining stock</span><span className="font-bold">{receipt.remaining_stock} {receipt.unit}{receipt.remaining_stock === 0 ? " (sold out)" : ""}</span></p>
+          </div>
+        </div>
+      ) : null}
 
       <div className="flex items-center gap-2 rounded-xl border border-border bg-card px-3">
         <Search className="h-4 w-4 text-muted-foreground" />
@@ -1448,6 +1541,42 @@ function OrdersScreen() {
 // ---------------------------------------------------------------------------
 
 function LearningScreen() {
+  return <LearningScreenInner />;
+}
+
+function HarvestsScreen() {
+  const list = useQuery({ queryKey: ["harvests"], queryFn: useServerFn(getHarvestHistory) });
+  const rows = list.data ?? [];
+  return (
+    <div className="space-y-3">
+      <div className="flex items-center gap-2">
+        <Package className="h-5 w-5 text-primary" />
+        <h2 className="text-xl font-black text-fn-green-2">Harvest history</h2>
+      </div>
+      <p className="text-xs text-muted-foreground">Every time you tap Harvest on a plot, it lands here.</p>
+      {rows.length === 0 ? (
+        <div className="rounded-2xl border border-dashed border-border bg-card p-6 text-center text-sm text-muted-foreground">
+          No harvests logged yet. Plant ginger in a garden, then tap Harvest when it's ready.
+        </div>
+      ) : (
+        <ol className="relative space-y-3 border-l-2 border-primary/30 pl-4">
+          {rows.map((h) => (
+            <li key={h.id} className="relative">
+              <span className="absolute -left-[22px] top-1.5 grid h-3 w-3 place-items-center rounded-full bg-primary ring-4 ring-background" />
+              <div className="rounded-xl border border-border bg-card p-3">
+                <p className="text-sm font-extrabold text-fn-green-2">{h.crop} · {h.garden}</p>
+                <p className="text-[11px] text-muted-foreground">{new Date(h.occurred_at).toLocaleString()}</p>
+                {h.note ? <p className="mt-1 text-xs text-foreground">{h.note}</p> : null}
+              </div>
+            </li>
+          ))}
+        </ol>
+      )}
+    </div>
+  );
+}
+
+function LearningScreenInner() {
   const qc = useQueryClient();
   const data = useQuery({ queryKey: ["modules"], queryFn: useServerFn(listModules) });
   const complete = useMutation({
