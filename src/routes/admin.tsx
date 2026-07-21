@@ -419,12 +419,48 @@ function WebPanel({
     );
   }
 
-  // learning
+  if (screen === "learning") {
+    return (
+      <Panel title="Learning modules & certificates" empty={data.learning.length === 0}>
+        {data.learning.map((m) => (
+          <Row key={m.id} left={m.title} right={`${m.issued} certificate${m.issued === 1 ? "" : "s"} issued`} />
+        ))}
+      </Panel>
+    );
+  }
+
+  return <AuditPanel />;
+}
+
+function AuditPanel() {
+  const audit = useQuery({ queryKey: ["admin-audit"], queryFn: useServerFn(listAdminAudit) });
+  const rows = audit.data ?? [];
   return (
-    <Panel title="Learning modules & certificates" empty={data.learning.length === 0}>
-      {data.learning.map((m) => (
-        <Row key={m.id} left={m.title} right={`${m.issued} certificate${m.issued === 1 ? "" : "s"} issued`} />
-      ))}
+    <Panel title="Administrative audit trail" empty={rows.length === 0}>
+      <div className="overflow-x-auto">
+        <table className="w-full text-sm">
+          <thead className="text-left text-xs uppercase text-[color:var(--fn-muted)]">
+            <tr>
+              <th className="py-2">When</th>
+              <th>Actor</th>
+              <th>Action</th>
+              <th>Target</th>
+              <th>Details</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((r) => (
+              <tr key={r.id} className="border-t border-[color:var(--fn-line)]">
+                <td className="py-2 text-xs text-[color:var(--fn-muted)]">{new Date(r.created_at).toLocaleString()}</td>
+                <td className="text-xs">{r.actor_name ?? r.actor_id.slice(0, 8)}</td>
+                <td className="text-xs font-semibold">{r.action}</td>
+                <td className="text-xs">{r.target_id ? r.target_id.slice(0, 8) : "—"}</td>
+                <td className="text-xs text-[color:var(--fn-muted)]">{r.detail ? JSON.stringify(r.detail) : ""}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
     </Panel>
   );
 }
