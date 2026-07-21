@@ -343,6 +343,15 @@ export const createListing = createServerFn({ method: "POST" })
     if (!hay.includes("ginger")) {
       throw new Error("Marketplace only accepts ginger and ginger-related products. Please include 'ginger' in the title, category or description.");
     }
+    // Sellers must have at least one harvested plot event before listing produce.
+    const { count: harvests } = await supabase
+      .from("garden_events")
+      .select("id", { count: "exact", head: true })
+      .eq("user_id", userId)
+      .eq("kind", "harvested");
+    if (!harvests || harvests <= 0) {
+      throw new Error("You can only sell products after logging a harvest. Go to My Garden, plant ginger, and tap Harvest first.");
+    }
     const { data: row, error } = await supabase
       .from("products")
       .insert({
