@@ -808,8 +808,10 @@ export const getAdminOverview = createServerFn({ method: "GET" })
 // ---------- Admin: impersonation / farmer detail ----------
 
 export const getFarmerDetail = createServerFn({ method: "GET" })
+  .middleware([requireSupabaseAuth])
   .inputValidator((i: unknown) => z.object({ user_id: z.string().uuid() }).parse(i))
-  .handler(async ({ data }) => {
+  .handler(async ({ data, context }) => {
+    await assertAdmin(context);
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
     const uid = data.user_id;
     const [
