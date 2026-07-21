@@ -95,7 +95,12 @@ function AdminView() {
   const claim = useMutation({
     mutationFn: useServerFn(claimAdmin),
     onSuccess: (result) => {
-      if (result.is_admin) {
+      const isAdmin =
+        typeof result === "object" &&
+        result !== null &&
+        "is_admin" in result &&
+        Boolean((result as { is_admin?: unknown }).is_admin);
+      if (isAdmin) {
         toast.success("Admin access enabled");
         queryClient.invalidateQueries({ queryKey: ["admin-status"] });
         queryClient.invalidateQueries({ queryKey: ["admin-overview"] });
