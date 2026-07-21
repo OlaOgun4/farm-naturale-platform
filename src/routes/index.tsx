@@ -32,6 +32,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { lovable } from "@/integrations/lovable";
 import {
   addPlot,
+  claimAdmin,
   completeModule,
   completeOnboarding,
   createGarden,
@@ -40,7 +41,9 @@ import {
   deletePlot,
   diagnoseCropPhoto,
   getDashboard,
+  getHarvestHistory,
   getMe,
+  getWaterReminders,
   getWallet,
   listConsultingRequests,
   listDiagnoses,
@@ -48,6 +51,7 @@ import {
   listModules,
   listOrders,
   listProducts,
+  logGardenEvent,
   placeOrder,
   requestPayout,
   submitConsultingRequest,
