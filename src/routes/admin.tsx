@@ -8,6 +8,7 @@ import {
   adminDeleteFarmer,
   adminDeleteGarden,
   adminTopUpWallet,
+  listAdminAudit,
 } from "@/lib/farm.functions";
 import { X, Eye, Trash2, Wallet } from "lucide-react";
 import { toast, Toaster } from "sonner";
@@ -49,7 +50,8 @@ type WebScreen =
   | "diagnostics"
   | "market"
   | "finance"
-  | "learning";
+  | "learning"
+  | "audit";
 
 const NAV: { id: WebScreen; label: string }[] = [
   { id: "dashboard", label: "Executive Dashboard" },
@@ -60,6 +62,7 @@ const NAV: { id: WebScreen; label: string }[] = [
   { id: "market", label: "Marketplace" },
   { id: "finance", label: "Finance" },
   { id: "learning", label: "Learning" },
+  { id: "audit", label: "Audit Log" },
 ];
 
 function rupees(cents: number) {
@@ -98,7 +101,7 @@ function AdminView() {
         </nav>
       </header>
 
-      <main className="mx-auto flex max-w-[1200px] gap-5 p-5 lg:flex-row flex-col">
+      <main className="mx-auto flex w-full gap-5 p-5 lg:flex-row flex-col">
         <aside className="w-full shrink-0 self-start rounded-2xl bg-[color:var(--fn-navy)] p-4 text-white shadow-[0_12px_30px_rgba(22,60,35,0.08)] lg:sticky lg:top-[92px] lg:w-[235px]">
           <h2 className="mb-3 text-lg font-bold">Farm Naturale</h2>
           <div className="grid gap-1.5">
