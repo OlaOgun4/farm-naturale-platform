@@ -961,17 +961,26 @@ export const deletePlot = createServerFn({ method: "POST" })
 // ---------- Admin actions ----------
 
 export const adminTopUpWallet = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
   .inputValidator((i: unknown) =>
     z
       .object({
         user_id: z.string().uuid(),
-        amount_cents: z.number().int().positive(),
+        amount_cents: z
+          .number()
+          .int("Amount must be whole cents")
+          .positive("Amount must be greater than zero")
+          .max(50_000_000, "Top-up capped at ₦500,000 per transaction"),
         reason: z.string().optional(),
       })
       .parse(i),
   )
-  .handler(async ({ data }) => {
+  .handler(async ({ data, context }) => {
+    await assertAdmin(context);
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    // Validate farmer exists
+    const { data: farmer } = await supabaseAdmin.from("profiles").select("id").eq("id", data.user_id).maybeSingle();
+    if (!farmer) throw new Error("Farmer not found");
     const { error } = await supabaseAdmin.from("wallet_transactions").insert({
       user_id: data.user_id,
       kind: "credit",
@@ -979,38 +988,42 @@ export const adminTopUpWallet = createServerFn({ method: "POST" })
       reason: data.reason || "Admin wallet top-up",
     });
     if (error) throw new Error(error.message);
+    await logAdmin(context.userId, "wallet.top_up", "user", data.user_id, {
+      amount_cents: data.amount_cents,
+      reason: data.reason || "Admin wallet top-up",
+    });
     return { ok: true };
   });
 
 export const adminDeleteFarmer = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
   .inputValidator((i: unknown) => z.object({ user_id: z.string().uuid() }).parse(i))
-  .handler(async ({ data }) => {
+  .handler(async ({ data, context }) => {
+    await assertAdmin(context);
+    if (data.user_id === context.userId) throw new Error("Admins cannot delete their own account");
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
     const uid = data.user_id;
+    // FK ON DELETE CASCADE handles the rest — order_items still need cleanup because
+    // they hang off orders, which cascade themselves. Keeping an explicit sweep for safety.
     const { data: orders } = await supabaseAdmin.from("orders").select("id").eq("buyer_id", uid);
     const orderIds = (orders ?? []).map((o) => o.id);
     if (orderIds.length) await supabaseAdmin.from("order_items").delete().in("order_id", orderIds);
-    await supabaseAdmin.from("orders").delete().eq("buyer_id", uid);
-    await supabaseAdmin.from("garden_events").delete().eq("user_id", uid);
-    await supabaseAdmin.from("plots").delete().eq("user_id", uid);
-    await supabaseAdmin.from("gardens").delete().eq("user_id", uid);
-    await supabaseAdmin.from("diagnoses").delete().eq("user_id", uid);
-    await supabaseAdmin.from("wallet_transactions").delete().eq("user_id", uid);
-    await supabaseAdmin.from("consulting_requests").delete().eq("user_id", uid);
-    await supabaseAdmin.from("certificates").delete().eq("user_id", uid);
-    await supabaseAdmin.from("products").delete().eq("seller_id", uid);
-    await supabaseAdmin.from("profiles").delete().eq("id", uid);
     try {
       await supabaseAdmin.auth.admin.deleteUser(uid);
     } catch (e) {
       console.error("auth.admin.deleteUser failed", e);
+      // Fallback: if auth delete fails, remove profile so cascades still fire on public rows.
+      await supabaseAdmin.from("profiles").delete().eq("id", uid);
     }
+    await logAdmin(context.userId, "farmer.delete", "user", uid, null);
     return { ok: true };
   });
 
 export const adminDeleteGarden = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
   .inputValidator((i: unknown) => z.object({ id: z.string().uuid() }).parse(i))
-  .handler(async ({ data }) => {
+  .handler(async ({ data, context }) => {
+    await assertAdmin(context);
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
     const { data: plots } = await supabaseAdmin.from("plots").select("id").eq("garden_id", data.id);
     const plotIds = (plots ?? []).map((p) => p.id);
@@ -1020,5 +1033,107 @@ export const adminDeleteGarden = createServerFn({ method: "POST" })
     }
     const { error } = await supabaseAdmin.from("gardens").delete().eq("id", data.id);
     if (error) throw new Error(error.message);
+    await logAdmin(context.userId, "garden.delete", "garden", data.id, null);
     return { ok: true };
+  });
+
+// ---------- Admin: audit log, roles, misc ----------
+
+export const listAdminAudit = createServerFn({ method: "GET" })
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context }) => {
+    await assertAdmin(context);
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const [{ data: rows }, { data: profiles }] = await Promise.all([
+      supabaseAdmin.from("admin_audit_log").select("*").order("created_at", { ascending: false }).limit(200),
+      supabaseAdmin.from("profiles").select("id, full_name"),
+    ]);
+    const byId = new Map((profiles ?? []).map((p) => [p.id, p.full_name || "Admin"]));
+    return (rows ?? []).map((r) => ({
+      ...r,
+      admin_name: byId.get(r.admin_id) || "Admin",
+      target_name: r.target_type === "user" && r.target_id ? byId.get(r.target_id) || null : null,
+    }));
+  });
+
+export const checkIsAdmin = createServerFn({ method: "GET" })
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context }) => {
+    const { data } = await context.supabase.rpc("has_role", { _user_id: context.userId, _role: "admin" });
+    return { is_admin: !!data };
+  });
+
+export const claimAdmin = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context }) => {
+    const { data, error } = await context.supabase.rpc("claim_admin_if_none");
+    if (error) throw new Error(error.message);
+    if (data) await logAdmin(context.userId, "admin.claimed", "user", context.userId, null);
+    return { is_admin: !!data };
+  });
+
+// ---------- Farmer: harvest history + water reminders ----------
+
+export const getHarvestHistory = createServerFn({ method: "GET" })
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context }) => {
+    const { supabase, userId } = context;
+    const [{ data: events }, { data: plots }, { data: gardens }] = await Promise.all([
+      supabase
+        .from("garden_events")
+        .select("*")
+        .eq("user_id", userId)
+        .eq("kind", "harvested")
+        .order("occurred_at", { ascending: false }),
+      supabase.from("plots").select("id, crop, garden_id").eq("user_id", userId),
+      supabase.from("gardens").select("id, name").eq("user_id", userId),
+    ]);
+    const plotById = new Map((plots ?? []).map((p) => [p.id, p]));
+    const gardenById = new Map((gardens ?? []).map((g) => [g.id, g.name]));
+    return (events ?? []).map((e) => {
+      const pl = plotById.get(e.plot_id);
+      return {
+        id: e.id,
+        occurred_at: e.occurred_at,
+        note: e.note,
+        crop: pl?.crop ?? "Ginger",
+        garden: pl ? gardenById.get(pl.garden_id) ?? "Garden" : "Garden",
+      };
+    });
+  });
+
+export const getWaterReminders = createServerFn({ method: "GET" })
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context }) => {
+    const { supabase, userId } = context;
+    const [{ data: plots }, { data: events }, { data: gardens }] = await Promise.all([
+      supabase.from("plots").select("*").eq("user_id", userId).eq("status", "growing"),
+      supabase.from("garden_events").select("plot_id, occurred_at, kind").eq("user_id", userId).eq("kind", "watered"),
+      supabase.from("gardens").select("id, name").eq("user_id", userId),
+    ]);
+    const lastByPlot = new Map<string, string>();
+    for (const e of events ?? []) {
+      const cur = lastByPlot.get(e.plot_id);
+      if (!cur || new Date(e.occurred_at).getTime() > new Date(cur).getTime()) {
+        lastByPlot.set(e.plot_id, e.occurred_at);
+      }
+    }
+    const gardenById = new Map((gardens ?? []).map((g) => [g.id, g.name]));
+    const now = Date.now();
+    const THRESHOLD_MS = 2 * 24 * 3600 * 1000; // 2 days
+    return (plots ?? [])
+      .map((p) => {
+        const last = lastByPlot.get(p.id) ?? p.planted_on;
+        const overdueMs = now - new Date(last).getTime();
+        const days = Math.floor(overdueMs / 86400000);
+        return {
+          plot_id: p.id,
+          crop: p.crop,
+          garden: gardenById.get(p.garden_id) ?? "Garden",
+          last_watered_at: lastByPlot.get(p.id) ?? null,
+          days_since: days,
+          due: overdueMs >= THRESHOLD_MS,
+        };
+      })
+      .sort((a, b) => b.days_since - a.days_since);
   });
