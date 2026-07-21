@@ -1004,6 +1004,7 @@ function DiagnosisScreen() {
   const [crop, setCrop] = useState("");
   const [busy, setBusy] = useState(false);
   const [dataUrl, setDataUrl] = useState<string | null>(null);
+  const [openCase, setOpenCase] = useState<null | (typeof list.data extends (infer U)[] | undefined ? U : never)>(null);
   const [latest, setLatest] = useState<null | {
     disease: string | null; confidence: number | null; severity: string | null; treatment: string | null; prevention: string | null; summary: string | null;
   }>(null);
