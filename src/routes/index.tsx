@@ -90,11 +90,13 @@ type ScreenId =
   | "sell"
   | "wallet"
   | "certificates"
+  | "harvests"
   | "orders";
 
 const JOURNEY: { id: ScreenId; label: string; icon: LucideIcon }[] = [
   { id: "dashboard", label: "Dashboard", icon: Sprout },
   { id: "garden", label: "My Garden", icon: Leaf },
+  { id: "harvests", label: "Harvests", icon: Package },
   { id: "diagnosis", label: "AI Crop Doctor", icon: Stethoscope },
   { id: "consult", label: "Consult Expert", icon: MessageCircle },
   { id: "market", label: "Marketplace", icon: ShoppingCart },
@@ -620,6 +622,8 @@ function ScreenView({ id, go }: { id: ScreenId; go: (s: ScreenId) => void }) {
       return <WalletScreen />;
     case "orders":
       return <OrdersScreen />;
+    case "harvests":
+      return <HarvestsScreen />;
     case "learning":
       return <LearningScreen />;
     case "certificates":
@@ -921,24 +925,19 @@ function GardenScreen() {
 
 function PlotRow({ plot }: { plot: { id: string; crop: string; status: string; planted_on: string } }) {
   const qc = useQueryClient();
+  const logFn = useServerFn(logGardenEvent);
   const log = useMutation({
-    mutationFn: useServerFn(async (input: { plot_id: string; kind: string; note?: string }) => {
-      const { logGardenEvent } = await import("@/lib/farm.functions");
-      return logGardenEvent({ data: input });
-    }),
-    onSuccess: () => qc.invalidateQueries(),
+    mutationFn: (input: { plot_id: string; kind: string; note?: string }) => logFn({ data: input }),
+    onSuccess: (_res, vars) => {
+      toast.success(vars.kind === "watered" ? "Watering logged" : "Harvest logged");
+      qc.invalidateQueries();
+    },
+    onError: (e) => toast.error(e instanceof Error ? e.message : "Action failed"),
   });
   const remove = useMutation({
     mutationFn: useServerFn(deletePlot),
     onSuccess: () => { toast.success("Plot removed"); qc.invalidateQueries(); },
   });
-  // Simpler: directly use useServerFn
-  const logFn = useServerFn(
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    (globalThis as unknown as Record<string, unknown>) as never,
-  );
-  // Not using logFn — the mutation above works via dynamic import
-  void logFn;
   return (
     <div className="flex items-center justify-between rounded-lg bg-fn-light px-2 py-1.5">
       <div>
@@ -949,13 +948,15 @@ function PlotRow({ plot }: { plot: { id: string; crop: string; status: string; p
       </div>
       <div className="flex gap-1">
         <button
-          onClick={() => log.mutate({ plot_id: plot.id, kind: "watered" })}
+          onClick={() => log.mutate({ plot_id: plot.id, kind: "watered", note: "Watered" })}
+          disabled={log.isPending}
           className="rounded-md bg-card px-2 py-1 text-[10px] font-extrabold text-fn-navy hover:bg-secondary"
         >
           Water
         </button>
         <button
           onClick={() => log.mutate({ plot_id: plot.id, kind: "harvested", note: "Harvested" })}
+          disabled={log.isPending || plot.status === "harvested"}
           className="rounded-md bg-primary px-2 py-1 text-[10px] font-extrabold text-primary-foreground"
         >
           Harvest
