@@ -1,5 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useSuspenseQuery, useQuery, useMutation, useQueryClient, queryOptions } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient, queryOptions } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { useState } from "react";
 import {
@@ -34,7 +34,6 @@ export const Route = createFileRoute("/admin")({
       },
     ],
   }),
-  loader: ({ context }) => context.queryClient.ensureQueryData(overviewQueryOptions),
   errorComponent: ({ error }) => (
     <div className="p-8 text-sm text-red-700">Failed to load admin data: {String(error?.message ?? error)}</div>
   ),
@@ -72,10 +71,18 @@ function rupees(cents: number) {
 
 function AdminView() {
   const [active, setActive] = useState<WebScreen>("dashboard");
-  const { data } = useSuspenseQuery(overviewQueryOptions);
+  const { data, isLoading, error } = useQuery(overviewQueryOptions);
   const current = NAV.find((n) => n.id === active)!;
   const [impersonateId, setImpersonateId] = useState<string | null>(null);
   const [topUpId, setTopUpId] = useState<string | null>(null);
+
+  if (isLoading || !data) {
+    return (
+      <div className="grid min-h-screen place-items-center bg-[color:var(--fn-bg)] p-8 text-sm text-[color:var(--fn-muted)]">
+        {error ? `Failed to load admin data: ${String((error as Error)?.message ?? error)}` : "Loading admin data…"}
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-[color:var(--fn-bg)] text-[color:var(--fn-text)]">
