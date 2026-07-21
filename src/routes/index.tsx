@@ -184,13 +184,14 @@ function AuthScreen() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
+  const [pendingVerify, setPendingVerify] = useState<string | null>(null);
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     setLoading(true);
     try {
       if (mode === "signup") {
-        const { error } = await supabase.auth.signUp({
+        const { data: signRes, error } = await supabase.auth.signUp({
           email,
           password,
           options: {
@@ -199,7 +200,12 @@ function AuthScreen() {
           },
         });
         if (error) throw error;
-        toast.success("Welcome to Farm Naturale!");
+        if (!signRes.session) {
+          setPendingVerify(email);
+          toast.success("Check your email to verify your account");
+        } else {
+          toast.success("Welcome to Farm Naturale!");
+        }
       } else {
         const { error } = await supabase.auth.signInWithPassword({ email, password });
         if (error) throw error;
@@ -232,6 +238,14 @@ function AuthScreen() {
       <section className="mx-auto w-full max-w-[430px]">
         <div className="rounded-[44px] bg-fn-phone p-[13px] shadow-fn-phone">
           <div className="rounded-[30px] bg-fn-screen p-6">
+            {pendingVerify ? (
+              <div className="mb-4 rounded-xl border border-fn-gold/40 bg-fn-cream p-3 text-center">
+                <p className="text-sm font-extrabold text-fn-green-2">📧 Verify your email</p>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  We sent a confirmation link to <span className="font-bold text-fn-navy">{pendingVerify}</span>. Click it, then sign in.
+                </p>
+              </div>
+            ) : null}
             <div className="mb-5 flex flex-col items-center gap-2 pt-4 text-center">
               <div className="grid h-16 w-16 place-items-center rounded-2xl bg-primary text-2xl font-black text-primary-foreground">
                 FN
