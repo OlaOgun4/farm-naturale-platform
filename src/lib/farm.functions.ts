@@ -1044,6 +1044,48 @@ export const adminDeleteGarden = createServerFn({ method: "POST" })
     return { ok: true };
   });
 
+export const adminUpdateGarden = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((i: unknown) =>
+    z
+      .object({
+        id: z.string().uuid(),
+        name: z.string().min(1).optional(),
+        size_sqm: z.number().nonnegative().nullable().optional(),
+        location: z.string().nullable().optional(),
+      })
+      .parse(i),
+  )
+  .handler(async ({ data, context }) => {
+    await assertAdmin(context);
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const { id, ...patch } = data;
+    const { error } = await supabaseAdmin.from("gardens").update(patch).eq("id", id);
+    if (error) throw new Error(error.message);
+    await logAdmin(context.userId, "garden.update", "garden", id, patch);
+    return { ok: true };
+  });
+
+export const getSellEligibility = createServerFn({ method: "GET" })
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context }) => {
+    const { supabase, userId } = context;
+    const { count } = await supabase
+      .from("garden_events")
+      .select("id", { count: "exact", head: true })
+      .eq("user_id", userId)
+      .eq("kind", "harvested");
+    const harvests = count ?? 0;
+    return {
+      eligible: harvests > 0,
+      harvest_count: harvests,
+      message:
+        harvests > 0
+          ? null
+          : "You can only sell ginger after logging a harvest. Go to My Garden, plant ginger, then tap Harvest — your listing form will unlock automatically.",
+    };
+  });
+
 // ---------- Admin: audit log, roles, misc ----------
 
 export const listAdminAudit = createServerFn({ method: "GET" })
