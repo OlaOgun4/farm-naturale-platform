@@ -393,6 +393,9 @@ export const placeOrder = createServerFn({ method: "POST" })
   )
   .handler(async ({ data, context }) => {
     const { supabase, userId } = context;
+    if (await isAdmin(context)) {
+      throw new Error("Admin accounts cannot buy on the marketplace. Only farmers can purchase products.");
+    }
     const { data: product, error: pe } = await supabase
       .from("products")
       .select("*")
