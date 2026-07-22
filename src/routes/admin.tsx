@@ -20,6 +20,7 @@ import {
   adminListAdmins,
   adminCreateAdmin,
   adminDeleteAdmin,
+  hasAnyAdmin,
 } from "@/lib/farm.functions";
 import { X, Eye, Trash2, Wallet, ShieldCheck, Loader2, LogOut, Plus } from "lucide-react";
 import { toast, Toaster } from "sonner";
