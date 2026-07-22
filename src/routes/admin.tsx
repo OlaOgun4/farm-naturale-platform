@@ -1170,17 +1170,18 @@ function AdminsPanel() {
                 <td className="text-xs text-[color:var(--fn-muted)]">{a.email ?? "—"}</td>
                 <td className="text-xs text-[color:var(--fn-muted)]">{new Date(a.created_at).toLocaleDateString()}</td>
                 <td className="text-xs">
-                  {a.is_self ? (
-                    <span className="text-[11px] text-[color:var(--fn-muted)]">—</span>
-                  ) : (
-                    <button
-                      disabled={del.isPending}
-                      onClick={() => { if (window.confirm(`Delete admin ${a.full_name}? They will lose all access.`)) del.mutate({ data: { user_id: a.user_id } }); }}
-                      className="inline-flex items-center gap-1 rounded-full border border-red-300 px-2 py-0.5 text-[11px] font-bold text-red-700 hover:bg-red-50 disabled:opacity-50"
-                    >
-                      <Trash2 className="h-3 w-3" /> Delete
-                    </button>
-                  )}
+                  <button
+                    disabled={del.isPending}
+                    onClick={() => {
+                      const msg = a.is_self
+                        ? `Delete YOUR OWN admin account (${a.full_name})? You will be signed out immediately.`
+                        : `Delete admin ${a.full_name}? They will lose all access.`;
+                      if (window.confirm(msg)) del.mutate({ data: { user_id: a.user_id } });
+                    }}
+                    className="inline-flex items-center gap-1 rounded-full border border-red-300 px-2 py-0.5 text-[11px] font-bold text-red-700 hover:bg-red-50 disabled:opacity-50"
+                  >
+                    <Trash2 className="h-3 w-3" /> Delete
+                  </button>
                 </td>
               </tr>
             ))}
