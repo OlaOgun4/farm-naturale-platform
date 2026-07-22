@@ -1409,7 +1409,6 @@ export const adminDeleteAdmin = createServerFn({ method: "POST" })
   .inputValidator((i: unknown) => z.object({ user_id: z.string().uuid() }).parse(i))
   .handler(async ({ data, context }) => {
     await assertAdmin(context);
-    if (data.user_id === context.userId) throw new Error("Admins cannot delete their own account. Ask another admin.");
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
     try {
       await supabaseAdmin.auth.admin.deleteUser(data.user_id);
