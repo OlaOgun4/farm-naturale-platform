@@ -8,6 +8,7 @@ import {
   getFarmerDetail,
   adminDeleteFarmer,
   adminDeleteGarden,
+  adminUpdateGarden,
   adminTopUpWallet,
   listAdminAudit,
   checkIsAdmin,
