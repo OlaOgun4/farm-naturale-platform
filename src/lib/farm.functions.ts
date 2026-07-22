@@ -1380,6 +1380,10 @@ export const adminListAdmins = createServerFn({ method: "GET" })
     const { data: roles } = await supabaseAdmin.from("user_roles").select("user_id, created_at").eq("role", "admin");
     const ids = (roles ?? []).map((r) => r.user_id);
     if (ids.length === 0) return [];
+    const sorted = [...(roles ?? [])].sort(
+      (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime(),
+    );
+    const firstAdminId = sorted[0]?.user_id ?? null;
     const { data: profiles } = await supabaseAdmin.from("profiles").select("id, full_name").in("id", ids);
     const nameById = new Map((profiles ?? []).map((p) => [p.id, p.full_name || "Admin"]));
     // Get emails via auth admin API
@@ -1396,6 +1400,7 @@ export const adminListAdmins = createServerFn({ method: "GET" })
           email,
           created_at: r.created_at,
           is_self: r.user_id === context.userId,
+          is_first: r.user_id === firstAdminId,
         };
       }),
     );
@@ -1434,6 +1439,17 @@ export const adminDeleteAdmin = createServerFn({ method: "POST" })
   .handler(async ({ data, context }) => {
     await assertAdmin(context);
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    // Protect the first admin ever created — the root account cannot be removed.
+    const { data: roles } = await supabaseAdmin
+      .from("user_roles")
+      .select("user_id, created_at")
+      .eq("role", "admin")
+      .order("created_at", { ascending: true })
+      .limit(1);
+    const firstAdminId = roles?.[0]?.user_id ?? null;
+    if (firstAdminId && data.user_id === firstAdminId) {
+      throw new Error("The first admin account cannot be deleted.");
+    }
     try {
       await supabaseAdmin.auth.admin.deleteUser(data.user_id);
     } catch (e) {
