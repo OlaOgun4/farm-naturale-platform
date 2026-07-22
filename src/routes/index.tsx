@@ -139,10 +139,48 @@ function MobileApp() {
       <Toaster richColors position="top-center" />
       <TopBar signedIn={!!session} />
       <div className="flex min-h-0 flex-1 flex-col overflow-y-auto md:overflow-hidden">
-        {!session ? <AuthScreen /> : <AppShell />}
+        {!session ? <AuthScreen /> : <AuthedRoot />}
       </div>
     </div>
   );
+}
+
+function AuthedRoot() {
+  const accessFn = useServerFn(getMobileAccess);
+  const { data, isLoading } = useQuery({
+    queryKey: ["mobile-access"],
+    queryFn: () => accessFn(),
+    retry: false,
+  });
+  if (isLoading || !data) {
+    return (
+      <div className="grid min-h-[60vh] place-items-center">
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+      </div>
+    );
+  }
+  if (!data.allowed) {
+    return (
+      <main className="mx-auto grid max-w-md place-items-center px-4 py-12 text-center">
+        <div className="rounded-2xl border border-border bg-card p-6 shadow-fn-panel">
+          <h2 className="text-xl font-black text-fn-green-2">Admin account detected</h2>
+          <p className="mt-2 text-sm text-muted-foreground">
+            Admin accounts cannot use the Farmer mobile app. Please sign in to the Web Admin instead.
+          </p>
+          <button
+            onClick={async () => {
+              await supabase.auth.signOut();
+              toast.success("Signed out");
+            }}
+            className="mt-4 rounded-xl bg-primary px-4 py-2 text-sm font-extrabold text-primary-foreground"
+          >
+            Sign out
+          </button>
+        </div>
+      </main>
+    );
+  }
+  return <AppShell />;
 }
 
 function TopBar({ signedIn }: { signedIn: boolean }) {
