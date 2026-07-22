@@ -43,6 +43,7 @@ import {
   getDashboard,
   getHarvestHistory,
   getMe,
+  getSellEligibility,
   getWaterReminders,
   getWallet,
   listConsultingRequests,
