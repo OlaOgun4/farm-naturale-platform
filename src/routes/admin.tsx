@@ -212,15 +212,17 @@ function AdminAuthScreen() {
             )}
           </button>
         </form>
-        <button
-          type="button"
-          onClick={() => setMode(mode === "signin" ? "signup" : "signin")}
-          className="mt-4 w-full text-center text-xs font-semibold text-[color:var(--fn-green-2)] hover:underline"
-        >
-          {mode === "signin"
-            ? "First-time setup? Create the initial admin account"
-            : "Already have an account? Sign in"}
-        </button>
+        {canSelfSignup ? (
+          <button
+            type="button"
+            onClick={() => setMode(mode === "signin" ? "signup" : "signin")}
+            className="mt-4 w-full text-center text-xs font-semibold text-[color:var(--fn-green-2)] hover:underline"
+          >
+            {mode === "signin"
+              ? "First-time setup? Create the initial admin account"
+              : "Already have an account? Sign in"}
+          </button>
+        ) : null}
       </section>
     </div>
   );
