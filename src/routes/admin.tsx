@@ -13,8 +13,15 @@ import {
   listAdminAudit,
   checkIsAdmin,
   claimAdmin,
+  adminListProducts,
+  adminCreateListing,
+  adminUpdateListing,
+  adminDeleteListing,
+  adminListAdmins,
+  adminCreateAdmin,
+  adminDeleteAdmin,
 } from "@/lib/farm.functions";
-import { X, Eye, Trash2, Wallet, ShieldCheck, Loader2, LogOut } from "lucide-react";
+import { X, Eye, Trash2, Wallet, ShieldCheck, Loader2, LogOut, Plus } from "lucide-react";
 import { toast, Toaster } from "sonner";
 
 const overviewQueryOptions = queryOptions({
