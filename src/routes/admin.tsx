@@ -126,6 +126,15 @@ function AdminAuthScreen() {
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [mode, setMode] = useState<"signin" | "signup">("signin");
+  const adminExists = useQuery({
+    queryKey: ["has-any-admin"],
+    queryFn: () => hasAnyAdmin(),
+    retry: false,
+  });
+  const canSelfSignup = adminExists.data?.has_any === false;
+  useEffect(() => {
+    if (!canSelfSignup && mode === "signup") setMode("signin");
+  }, [canSelfSignup, mode]);
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
