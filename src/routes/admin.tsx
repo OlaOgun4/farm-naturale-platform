@@ -518,21 +518,7 @@ function WebPanel({
   if (screen === "gardens") {
     return (
       <Panel title="Home gardens" empty={data.gardensList.length === 0}>
-        {data.gardensList.map((g) => (
-          <div key={g.id} className="flex items-center justify-between gap-2 border-b border-[#edf2ee] py-2.5 text-sm last:border-b-0">
-            <span className="min-w-0 flex-1 truncate">
-              <span className="font-semibold">{g.owner}</span>
-              <span className="text-[color:var(--fn-muted)]"> • {g.name} • {g.location}</span>
-            </span>
-            <span className="flex items-center gap-2">
-              <span className="text-[color:var(--fn-muted)]">{g.crops.length ? g.crops.join(", ") : "no crops yet"}</span>
-              {g.growing > 0 && (
-                <span className="rounded-full bg-[#e8f7ed] px-2 py-1 text-[11px] font-bold text-[color:var(--fn-green)]">{g.growing} growing</span>
-              )}
-              <DeleteGardenButton gardenId={g.id} name={g.name} />
-            </span>
-          </div>
-        ))}
+        <GardensTable rows={data.gardensList} />
       </Panel>
     );
   }
@@ -646,14 +632,129 @@ function WebPanel({
     );
   }
 
-  return <AuditPanel />;
+  return <AuditPanel onImpersonate={onImpersonate} />;
 }
 
-function AuditPanel() {
+function GardensTable({ rows }: { rows: OverviewData["gardensList"] }) {
+  const totalSize = rows.reduce((sum, g) => sum + (Number(g.size_sqm) || 0), 0);
+  const totalGrowing = rows.reduce((sum, g) => sum + g.growing, 0);
+  return (
+    <div>
+      <div className="mb-3 flex flex-wrap items-center gap-3 text-xs text-[color:var(--fn-muted)]">
+        <span><b className="text-[color:var(--fn-green)]">{rows.length}</b> gardens</span>
+        <span>•</span>
+        <span><b className="text-[color:var(--fn-green)]">{totalSize.toLocaleString()} sqm</b> total area</span>
+        <span>•</span>
+        <span><b className="text-[color:var(--fn-green)]">{totalGrowing}</b> plots growing</span>
+      </div>
+      <div className="overflow-x-auto">
+        <table className="w-full text-sm">
+          <thead className="text-left text-xs uppercase text-[color:var(--fn-muted)]">
+            <tr>
+              <th className="py-2">Owner</th>
+              <th>Garden</th>
+              <th>Location</th>
+              <th>Size (sqm)</th>
+              <th>Crops</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((g) => <GardenRow key={g.id} g={g} />)}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+function GardenRow({ g }: { g: OverviewData["gardensList"][number] }) {
+  const qc = useQueryClient();
+  const [size, setSize] = useState<string>(g.size_sqm != null ? String(g.size_sqm) : "");
+  const update = useMutation({
+    mutationFn: useServerFn(adminUpdateGarden),
+    onSuccess: () => {
+      toast.success("Garden updated");
+      qc.invalidateQueries({ queryKey: ["admin-overview"] });
+    },
+    onError: (e) => toast.error(e instanceof Error ? e.message : "Failed"),
+  });
+  const current = g.size_sqm != null ? String(g.size_sqm) : "";
+  const dirty = size !== current;
+  return (
+    <tr className="border-t border-[color:var(--fn-line)]">
+      <td className="py-2 text-xs font-semibold">{g.owner}</td>
+      <td className="text-xs">{g.name}</td>
+      <td className="text-xs text-[color:var(--fn-muted)]">{g.location}</td>
+      <td className="text-xs">
+        <div className="flex items-center gap-1">
+          <input
+            type="number"
+            min={0}
+            value={size}
+            onChange={(e) => setSize(e.target.value)}
+            className="w-20 rounded border border-[color:var(--fn-line)] px-2 py-1 text-xs"
+          />
+          {dirty ? (
+            <button
+              disabled={update.isPending}
+              onClick={() =>
+                update.mutate({
+                  data: { id: g.id, size_sqm: size === "" ? null : Number(size) },
+                })
+              }
+              className="rounded bg-[color:var(--fn-green)] px-2 py-1 text-[10px] font-bold text-white disabled:opacity-60"
+            >
+              Save
+            </button>
+          ) : null}
+        </div>
+      </td>
+      <td className="text-xs text-[color:var(--fn-muted)]">
+        {g.crops.length ? g.crops.join(", ") : "no crops yet"}
+        {g.growing > 0 && (
+          <span className="ml-2 rounded-full bg-[#e8f7ed] px-2 py-0.5 text-[10px] font-bold text-[color:var(--fn-green)]">{g.growing} growing</span>
+        )}
+      </td>
+      <td className="text-xs">
+        <DeleteGardenButton gardenId={g.id} name={g.name} />
+      </td>
+    </tr>
+  );
+}
+
+function AuditPanel({ onImpersonate }: { onImpersonate: (userId: string) => void }) {
   const audit = useQuery({ queryKey: ["admin-audit"], queryFn: useServerFn(listAdminAudit) });
-  const rows = audit.data ?? [];
+  const all = audit.data ?? [];
+  const [q, setQ] = useState("");
+  const [action, setAction] = useState<string>("all");
+  const actions = Array.from(new Set(all.map((r) => r.action))).sort();
+  const needle = q.trim().toLowerCase();
+  const rows = all.filter((r) => {
+    if (action !== "all" && r.action !== action) return false;
+    if (!needle) return true;
+    const hay = [r.admin_name, r.action, r.target_name, r.target_id, r.target_type, r.details ? JSON.stringify(r.details) : ""].filter(Boolean).join(" ").toLowerCase();
+    return hay.includes(needle);
+  });
   return (
     <Panel title="Administrative audit trail" empty={rows.length === 0}>
+      <div className="mb-3 flex flex-wrap items-center gap-2">
+        <input
+          value={q}
+          onChange={(e) => setQ(e.target.value)}
+          placeholder="Search actor, target or details…"
+          className="flex-1 min-w-[220px] rounded border border-[color:var(--fn-line)] px-3 py-1.5 text-sm"
+        />
+        <select
+          value={action}
+          onChange={(e) => setAction(e.target.value)}
+          className="rounded border border-[color:var(--fn-line)] px-3 py-1.5 text-sm"
+        >
+          <option value="all">All actions</option>
+          {actions.map((a) => <option key={a} value={a}>{a}</option>)}
+        </select>
+        <span className="text-xs text-[color:var(--fn-muted)]">{rows.length} of {all.length}</span>
+      </div>
       <div className="overflow-x-auto">
         <table className="w-full text-sm">
           <thead className="text-left text-xs uppercase text-[color:var(--fn-muted)]">
@@ -671,7 +772,22 @@ function AuditPanel() {
                 <td className="py-2 text-xs text-[color:var(--fn-muted)]">{new Date(r.created_at).toLocaleString()}</td>
                 <td className="text-xs">{r.admin_name ?? r.admin_id.slice(0, 8)}</td>
                 <td className="text-xs font-semibold">{r.action}</td>
-                <td className="text-xs">{r.target_name ?? (r.target_id ? r.target_id.slice(0, 8) : "—")}</td>
+                <td className="text-xs">
+                  {r.target_owner_id ? (
+                    <button
+                      onClick={() => onImpersonate(r.target_owner_id!)}
+                      className="text-[color:var(--fn-green)] underline decoration-dotted underline-offset-2 hover:text-[color:var(--fn-navy)]"
+                      title="Open farmer preview"
+                    >
+                      {r.target_type === "garden" && r.target_name
+                        ? `🌱 ${r.target_name}`
+                        : r.target_name ?? r.target_id?.slice(0, 8)}
+                    </button>
+                  ) : (
+                    <span>{r.target_name ?? (r.target_id ? r.target_id.slice(0, 8) : "—")}</span>
+                  )}
+                  {r.target_type ? <span className="ml-1 text-[10px] text-[color:var(--fn-muted)]">({r.target_type})</span> : null}
+                </td>
                 <td className="text-xs text-[color:var(--fn-muted)]">{r.details ? JSON.stringify(r.details) : ""}</td>
               </tr>
             ))}
