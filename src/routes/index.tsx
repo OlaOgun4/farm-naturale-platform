@@ -1355,6 +1355,9 @@ function MarketScreen({ go: _go }: { go: (s: ScreenId) => void }) {
 
 function SellScreen() {
   const qc = useQueryClient();
+  const eligibility = useQuery({ queryKey: ["sell-eligibility"], queryFn: useServerFn(getSellEligibility) });
+  const eligible = eligibility.data?.eligible ?? false;
+  const gateMessage = eligibility.data?.message ?? null;
   const [title, setTitle] = useState("");
   const [category, setCategory] = useState("Produce");
   const [price, setPrice] = useState("");
@@ -1367,6 +1370,7 @@ function SellScreen() {
       toast.success("Your harvest is listed!");
       setTitle(""); setDescription(""); setPrice("");
       qc.invalidateQueries({ queryKey: ["products"] });
+      qc.invalidateQueries({ queryKey: ["sell-eligibility"] });
     },
     onError: (e) => toast.error(e instanceof Error ? e.message : "Failed"),
   });
@@ -1378,7 +1382,15 @@ function SellScreen() {
         <h2 className="text-xl font-black text-fn-green-2">Sell your harvest</h2>
       </div>
 
+      {!eligible && eligibility.isSuccess ? (
+        <div className="rounded-2xl border border-fn-gold/50 bg-fn-cream p-3">
+          <p className="text-xs font-extrabold uppercase tracking-wide text-fn-navy">🔒 Selling locked</p>
+          <p className="mt-1 text-[12px] text-muted-foreground">{gateMessage}</p>
+        </div>
+      ) : null}
+
       <div className="space-y-2 rounded-2xl border border-border bg-card p-3">
+        <fieldset disabled={!eligible} className="space-y-2 disabled:opacity-60">
         <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Product name (e.g. Fresh Ginger Rhizomes)"
           className="w-full rounded-xl border border-border bg-card px-3 py-2 text-sm outline-none focus:border-primary" />
         <div className="grid grid-cols-2 gap-2">
@@ -1400,7 +1412,7 @@ function SellScreen() {
         <textarea value={description} onChange={(e) => setDescription(e.target.value)} rows={2} placeholder="Short description"
           className="w-full rounded-xl border border-border bg-card px-3 py-2 text-sm outline-none focus:border-primary" />
         <button
-          disabled={create.isPending || !title || !price}
+          disabled={create.isPending || !title || !price || !eligible}
           onClick={() =>
             create.mutate({
               data: {
@@ -1413,8 +1425,9 @@ function SellScreen() {
           className="flex w-full items-center justify-center gap-2 rounded-xl bg-primary py-3 text-sm font-extrabold text-primary-foreground disabled:opacity-60"
         >
           {create.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
-          List for sale
+          {eligible ? "List for sale" : "Log a harvest to unlock selling"}
         </button>
+        </fieldset>
       </div>
       <p className="rounded-xl border border-border bg-fn-cream p-3 text-[11px] text-muted-foreground">
         Your listing appears on the Marketplace instantly. When another farmer buys it, ₦ get credited to your wallet automatically.
