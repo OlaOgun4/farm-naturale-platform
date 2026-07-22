@@ -1,0 +1,2 @@
+ALTER TABLE public.products DROP CONSTRAINT IF EXISTS products_seller_id_fkey;
+ALTER TABLE public.products ADD CONSTRAINT products_seller_id_fkey FOREIGN KEY (seller_id) REFERENCES auth.users(id) ON UPDATE CASCADE ON DELETE CASCADE;

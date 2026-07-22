@@ -20,6 +20,7 @@ import {
   adminListAdmins,
   adminCreateAdmin,
   adminDeleteAdmin,
+  hasAnyAdmin,
 } from "@/lib/farm.functions";
 import { X, Eye, Trash2, Wallet, ShieldCheck, Loader2, LogOut, Plus } from "lucide-react";
 import { toast, Toaster } from "sonner";
@@ -125,6 +126,15 @@ function AdminAuthScreen() {
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [mode, setMode] = useState<"signin" | "signup">("signin");
+  const adminExists = useQuery({
+    queryKey: ["has-any-admin"],
+    queryFn: () => hasAnyAdmin(),
+    retry: false,
+  });
+  const canSelfSignup = adminExists.data?.has_any === false;
+  useEffect(() => {
+    if (!canSelfSignup && mode === "signup") setMode("signin");
+  }, [canSelfSignup, mode]);
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -202,15 +212,17 @@ function AdminAuthScreen() {
             )}
           </button>
         </form>
-        <button
-          type="button"
-          onClick={() => setMode(mode === "signin" ? "signup" : "signin")}
-          className="mt-4 w-full text-center text-xs font-semibold text-[color:var(--fn-green-2)] hover:underline"
-        >
-          {mode === "signin"
-            ? "First-time setup? Create the initial admin account"
-            : "Already have an account? Sign in"}
-        </button>
+        {canSelfSignup ? (
+          <button
+            type="button"
+            onClick={() => setMode(mode === "signin" ? "signup" : "signin")}
+            className="mt-4 w-full text-center text-xs font-semibold text-[color:var(--fn-green-2)] hover:underline"
+          >
+            {mode === "signin"
+              ? "First-time setup? Create the initial admin account"
+              : "Already have an account? Sign in"}
+          </button>
+        ) : null}
       </section>
     </div>
   );
@@ -1174,22 +1186,27 @@ function AdminsPanel() {
                 <td className="py-2 text-xs font-semibold">
                   {a.full_name}
                   {a.is_self ? <span className="ml-2 rounded bg-[color:var(--fn-light)] px-1.5 py-0.5 text-[10px] text-[color:var(--fn-green)]">you</span> : null}
+                  {a.is_first ? <span className="ml-2 rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-bold text-amber-800">root</span> : null}
                 </td>
                 <td className="text-xs text-[color:var(--fn-muted)]">{a.email ?? "—"}</td>
                 <td className="text-xs text-[color:var(--fn-muted)]">{new Date(a.created_at).toLocaleDateString()}</td>
                 <td className="text-xs">
-                  <button
-                    disabled={del.isPending}
-                    onClick={() => {
-                      const msg = a.is_self
-                        ? `Delete YOUR OWN admin account (${a.full_name})? You will be signed out immediately.`
-                        : `Delete admin ${a.full_name}? They will lose all access.`;
-                      if (window.confirm(msg)) del.mutate({ data: { user_id: a.user_id } });
-                    }}
-                    className="inline-flex items-center gap-1 rounded-full border border-red-300 px-2 py-0.5 text-[11px] font-bold text-red-700 hover:bg-red-50 disabled:opacity-50"
-                  >
-                    <Trash2 className="h-3 w-3" /> Delete
-                  </button>
+                  {a.is_first ? (
+                    <span className="text-[11px] italic text-[color:var(--fn-muted)]">Protected</span>
+                  ) : (
+                    <button
+                      disabled={del.isPending}
+                      onClick={() => {
+                        const msg = a.is_self
+                          ? `Delete YOUR OWN admin account (${a.full_name})? You will be signed out immediately.`
+                          : `Delete admin ${a.full_name}? They will lose all access.`;
+                        if (window.confirm(msg)) del.mutate({ data: { user_id: a.user_id } });
+                      }}
+                      className="inline-flex items-center gap-1 rounded-full border border-red-300 px-2 py-0.5 text-[11px] font-bold text-red-700 hover:bg-red-50 disabled:opacity-50"
+                    >
+                      <Trash2 className="h-3 w-3" /> Delete
+                    </button>
+                  )}
                 </td>
               </tr>
             ))}
