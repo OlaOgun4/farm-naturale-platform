@@ -1022,3 +1022,174 @@ function TopUpModal({ userId, farmerName, onClose }: { userId: string; farmerNam
     </div>
   );
 }
+
+// ---------------- Marketplace CRUD ----------------
+
+function MarketplacePanel({ data }: { data: OverviewData }) {
+  const qc = useQueryClient();
+  const products = useQuery({ queryKey: ["admin-products"], queryFn: useServerFn(adminListProducts) });
+  const [title, setTitle] = useState("");
+  const [category, setCategory] = useState("Ginger");
+  const [description, setDescription] = useState("");
+  const [price, setPrice] = useState("500");
+  const [stock, setStock] = useState("10");
+  const [unit, setUnit] = useState("kg");
+
+  const create = useMutation({
+    mutationFn: useServerFn(adminCreateListing),
+    onSuccess: () => {
+      toast.success("Product added to marketplace");
+      setTitle(""); setDescription(""); setPrice("500"); setStock("10");
+      qc.invalidateQueries({ queryKey: ["admin-products"] });
+      qc.invalidateQueries({ queryKey: ["admin-overview"] });
+    },
+    onError: (e) => toast.error(e instanceof Error ? e.message : "Failed"),
+  });
+  const del = useMutation({
+    mutationFn: useServerFn(adminDeleteListing),
+    onSuccess: () => {
+      toast.success("Product removed");
+      qc.invalidateQueries({ queryKey: ["admin-products"] });
+      qc.invalidateQueries({ queryKey: ["admin-overview"] });
+    },
+    onError: (e) => toast.error(e instanceof Error ? e.message : "Failed"),
+  });
+
+  return (
+    <div className="grid gap-3 lg:grid-cols-[1fr_1.4fr]">
+      <Panel title="Add product (Platform listing)">
+        <div className="space-y-2 text-sm">
+          <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Title (must include 'ginger')" className="w-full rounded border border-[color:var(--fn-line)] px-3 py-2" />
+          <input value={category} onChange={(e) => setCategory(e.target.value)} placeholder="Category" className="w-full rounded border border-[color:var(--fn-line)] px-3 py-2" />
+          <textarea value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Description" className="w-full rounded border border-[color:var(--fn-line)] px-3 py-2" rows={2} />
+          <div className="grid grid-cols-3 gap-2">
+            <input value={price} onChange={(e) => setPrice(e.target.value)} placeholder="Price (₦)" type="number" className="w-full rounded border border-[color:var(--fn-line)] px-3 py-2" />
+            <input value={stock} onChange={(e) => setStock(e.target.value)} placeholder="Stock" type="number" className="w-full rounded border border-[color:var(--fn-line)] px-3 py-2" />
+            <input value={unit} onChange={(e) => setUnit(e.target.value)} placeholder="Unit" className="w-full rounded border border-[color:var(--fn-line)] px-3 py-2" />
+          </div>
+          <button
+            disabled={create.isPending || !title || Number(price) < 0}
+            onClick={() => create.mutate({ data: { title, category, description, price_cents: Math.round(Number(price) * 100), unit, stock: Number(stock) } })}
+            className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-[color:var(--fn-green)] py-2 text-sm font-extrabold text-white disabled:opacity-60"
+          >
+            <Plus className="h-4 w-4" /> {create.isPending ? "Adding…" : "Add to marketplace"}
+          </button>
+        </div>
+      </Panel>
+      <Panel title="All products (Live marketplace)" empty={(products.data ?? []).length === 0}>
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead className="text-left text-xs uppercase text-[color:var(--fn-muted)]">
+              <tr><th className="py-2">Title</th><th>Seller</th><th>Price</th><th>Stock</th><th></th></tr>
+            </thead>
+            <tbody>
+              {(products.data ?? []).map((p) => (
+                <tr key={p.id} className="border-t border-[color:var(--fn-line)]">
+                  <td className="py-2 text-xs font-semibold">{p.title}</td>
+                  <td className="text-xs">{p.seller_name}</td>
+                  <td className="text-xs">{rupees(p.price_cents)}</td>
+                  <td className="text-xs">{p.stock}</td>
+                  <td className="text-xs">
+                    <button
+                      disabled={del.isPending}
+                      onClick={() => { if (window.confirm(`Delete "${p.title}"?`)) del.mutate({ data: { id: p.id } }); }}
+                      className="inline-flex items-center gap-1 rounded-full border border-red-300 px-2 py-0.5 text-[11px] font-bold text-red-700 hover:bg-red-50 disabled:opacity-50"
+                    >
+                      <Trash2 className="h-3 w-3" /> Delete
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        <div className="mt-3 text-xs text-[color:var(--fn-muted)]">
+          Recent orders: {data.recentOrders.length} • Top-selling: {data.topProducts[0]?.title ?? "—"}
+        </div>
+      </Panel>
+    </div>
+  );
+}
+
+// ---------------- Admin users CRUD ----------------
+
+function AdminsPanel() {
+  const qc = useQueryClient();
+  const admins = useQuery({ queryKey: ["admin-admins"], queryFn: useServerFn(adminListAdmins) });
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [fullName, setFullName] = useState("");
+  const create = useMutation({
+    mutationFn: useServerFn(adminCreateAdmin),
+    onSuccess: () => {
+      toast.success("Admin created");
+      setEmail(""); setPassword(""); setFullName("");
+      qc.invalidateQueries({ queryKey: ["admin-admins"] });
+    },
+    onError: (e) => toast.error(e instanceof Error ? e.message : "Failed"),
+  });
+  const del = useMutation({
+    mutationFn: useServerFn(adminDeleteAdmin),
+    onSuccess: () => {
+      toast.success("Admin deleted");
+      qc.invalidateQueries({ queryKey: ["admin-admins"] });
+    },
+    onError: (e) => toast.error(e instanceof Error ? e.message : "Failed"),
+  });
+  return (
+    <div className="grid gap-3 lg:grid-cols-[1fr_1.4fr]">
+      <Panel title="Add admin user">
+        <div className="space-y-2 text-sm">
+          <input value={fullName} onChange={(e) => setFullName(e.target.value)} placeholder="Full name" className="w-full rounded border border-[color:var(--fn-line)] px-3 py-2" />
+          <input value={email} onChange={(e) => setEmail(e.target.value)} placeholder="Email" type="email" className="w-full rounded border border-[color:var(--fn-line)] px-3 py-2" />
+          <input value={password} onChange={(e) => setPassword(e.target.value)} placeholder="Password (min 6 chars)" type="password" minLength={6} className="w-full rounded border border-[color:var(--fn-line)] px-3 py-2" />
+          <button
+            disabled={create.isPending || !email || password.length < 6}
+            onClick={() => create.mutate({ data: { email, password, full_name: fullName || "Admin" } })}
+            className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-[color:var(--fn-green)] py-2 text-sm font-extrabold text-white disabled:opacity-60"
+          >
+            <Plus className="h-4 w-4" /> {create.isPending ? "Creating…" : "Create admin"}
+          </button>
+          <p className="text-[11px] text-[color:var(--fn-muted)]">
+            New admin users cannot sign in to the mobile Farmer app.
+          </p>
+        </div>
+      </Panel>
+      <Panel title="Admin users" empty={(admins.data ?? []).length === 0}>
+        <table className="w-full text-sm">
+          <thead className="text-left text-xs uppercase text-[color:var(--fn-muted)]">
+            <tr><th className="py-2">Name</th><th>Email</th><th>Added</th><th></th></tr>
+          </thead>
+          <tbody>
+            {(admins.data ?? []).map((a) => (
+              <tr key={a.user_id} className="border-t border-[color:var(--fn-line)]">
+                <td className="py-2 text-xs font-semibold">
+                  {a.full_name}
+                  {a.is_self ? <span className="ml-2 rounded bg-[color:var(--fn-light)] px-1.5 py-0.5 text-[10px] text-[color:var(--fn-green)]">you</span> : null}
+                </td>
+                <td className="text-xs text-[color:var(--fn-muted)]">{a.email ?? "—"}</td>
+                <td className="text-xs text-[color:var(--fn-muted)]">{new Date(a.created_at).toLocaleDateString()}</td>
+                <td className="text-xs">
+                  {a.is_self ? (
+                    <span className="text-[11px] text-[color:var(--fn-muted)]">—</span>
+                  ) : (
+                    <button
+                      disabled={del.isPending}
+                      onClick={() => { if (window.confirm(`Delete admin ${a.full_name}? They will lose all access.`)) del.mutate({ data: { user_id: a.user_id } }); }}
+                      className="inline-flex items-center gap-1 rounded-full border border-red-300 px-2 py-0.5 text-[11px] font-bold text-red-700 hover:bg-red-50 disabled:opacity-50"
+                    >
+                      <Trash2 className="h-3 w-3" /> Delete
+                    </button>
+                  )}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+        <p className="mt-3 text-[11px] text-[color:var(--fn-muted)]">
+          If all admins are deleted, reload this page and the first-admin claim screen returns.
+        </p>
+      </Panel>
+    </div>
+  );
+}
