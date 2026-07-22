@@ -897,7 +897,10 @@ function GardenScreen() {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm font-extrabold text-fn-green-2">{g.name}</p>
-                <p className="text-[11px] text-muted-foreground">{plots.length} plots</p>
+                <p className="text-[11px] text-muted-foreground">
+                  {plots.length} plots{g.size_sqm ? ` · ${g.size_sqm} sqm` : ""}
+                  {g.location ? ` · ${g.location}` : ""}
+                </p>
               </div>
               <div className="flex items-center gap-1">
                 <button
