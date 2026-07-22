@@ -1046,16 +1046,33 @@ export const listAdminAudit = createServerFn({ method: "GET" })
   .handler(async ({ context }) => {
     await assertAdmin(context);
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-    const [{ data: rows }, { data: profiles }] = await Promise.all([
+    const [{ data: rows }, { data: profiles }, { data: gardens }] = await Promise.all([
       supabaseAdmin.from("admin_audit_log").select("*").order("created_at", { ascending: false }).limit(200),
       supabaseAdmin.from("profiles").select("id, full_name"),
+      supabaseAdmin.from("gardens").select("id, name, user_id"),
     ]);
     const byId = new Map((profiles ?? []).map((p) => [p.id, p.full_name || "Admin"]));
-    return (rows ?? []).map((r) => ({
-      ...r,
-      admin_name: byId.get(r.admin_id) || "Admin",
-      target_name: r.target_type === "user" && r.target_id ? byId.get(r.target_id) || null : null,
-    }));
+    const gardenById = new Map((gardens ?? []).map((g) => [g.id, g] as const));
+    return (rows ?? []).map((r) => {
+      let target_name: string | null = null;
+      let target_owner_id: string | null = null;
+      if (r.target_type === "user" && r.target_id) {
+        target_name = byId.get(r.target_id) || null;
+        target_owner_id = r.target_id;
+      } else if (r.target_type === "garden" && r.target_id) {
+        const g = gardenById.get(r.target_id);
+        if (g) {
+          target_name = g.name;
+          target_owner_id = g.user_id;
+        }
+      }
+      return {
+        ...r,
+        admin_name: byId.get(r.admin_id) || "Admin",
+        target_name,
+        target_owner_id,
+      };
+    });
   });
 
 export const checkIsAdmin = createServerFn({ method: "GET" })
