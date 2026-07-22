@@ -45,6 +45,7 @@ import {
   getMe,
   getSellEligibility,
   getWaterReminders,
+  getMobileAccess,
   getWallet,
   listConsultingRequests,
   listDiagnoses,
