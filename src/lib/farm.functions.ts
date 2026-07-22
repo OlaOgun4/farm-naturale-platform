@@ -1154,6 +1154,15 @@ export const checkIsAdmin = createServerFn({ method: "GET" })
     return { is_admin: !!data };
   });
 
+export const hasAnyAdmin = createServerFn({ method: "GET" }).handler(async () => {
+  const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+  const { count } = await supabaseAdmin
+    .from("user_roles")
+    .select("user_id", { count: "exact", head: true })
+    .eq("role", "admin");
+  return { has_any: (count ?? 0) > 0 };
+});
+
 export const claimAdmin = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }) => {
