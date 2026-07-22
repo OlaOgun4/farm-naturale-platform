@@ -17,6 +17,16 @@ async function assertAdmin(context: AuthCtx) {
   if (!data) throw new Error("Forbidden: admin only");
 }
 
+async function isAdmin(context: AuthCtx): Promise<boolean> {
+  const { data } = await context.supabase
+    .from("user_roles")
+    .select("role")
+    .eq("user_id", context.userId)
+    .eq("role", "admin")
+    .maybeSingle();
+  return !!data;
+}
+
 async function logAdmin(adminId: string, action: string, targetType: string, targetId: string, details: unknown) {
   const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
   await supabaseAdmin.from("admin_audit_log").insert({
