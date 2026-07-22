@@ -638,9 +638,12 @@ export const getAdminOverview = createServerFn({ method: "GET" })
   const profileById = new Map((profiles ?? []).map((p) => [p.id, p]));
   const moduleById = new Map((modules ?? []).map((m) => [m.id, m]));
 
-  const walletTotal = (txs ?? []).reduce((s, t) => (t.kind === "credit" ? s + t.amount_cents : s - t.amount_cents), 0);
-  const gmv = (orders ?? []).reduce((s, o) => s + (o.total_cents ?? 0), 0);
-  const payouts = (txs ?? []).filter((t) => t.kind === "payout").reduce((s, t) => s + t.amount_cents, 0);
+  const farmerTxs = (txs ?? []).filter((t) => !adminIds.has(t.user_id));
+  const farmerOrders = (orders ?? []).filter((o) => !adminIds.has(o.buyer_id));
+  const farmerDiagnoses = (diagnoses ?? []).filter((d) => !adminIds.has(d.user_id));
+  const walletTotal = farmerTxs.reduce((s, t) => (t.kind === "credit" ? s + t.amount_cents : s - t.amount_cents), 0);
+  const gmv = farmerOrders.reduce((s, o) => s + (o.total_cents ?? 0), 0);
+  const payouts = farmerTxs.filter((t) => t.kind === "payout").reduce((s, t) => s + t.amount_cents, 0);
 
   // Disease frequency
   const diseaseCounts = new Map<string, number>();
