@@ -600,6 +600,7 @@ export const getAdminOverview = createServerFn({ method: "GET" })
     { data: consulting },
     { data: certificates },
     { data: modules },
+    { data: adminRoles },
   ] = await Promise.all([
     supabaseAdmin.from("profiles").select("id, full_name, village, land_size_acres, phone, created_at, onboarded").order("created_at", { ascending: false }),
     supabaseAdmin.from("gardens").select("id, user_id, name, size_sqm, location, created_at"),
@@ -612,8 +613,11 @@ export const getAdminOverview = createServerFn({ method: "GET" })
     supabaseAdmin.from("consulting_requests").select("id, user_id, question, crop, reply, replied_at, created_at").order("created_at", { ascending: false }),
     supabaseAdmin.from("certificates").select("id, user_id, module_id, issued_at, code"),
     supabaseAdmin.from("learning_modules").select("id, title"),
+    supabaseAdmin.from("user_roles").select("user_id").eq("role", "admin"),
   ]);
 
+  const adminIds = new Set((adminRoles ?? []).map((r) => r.user_id));
+  const farmerProfiles = (profiles ?? []).filter((p) => !adminIds.has(p.id));
   const profileById = new Map((profiles ?? []).map((p) => [p.id, p]));
   const moduleById = new Map((modules ?? []).map((m) => [m.id, m]));
 
@@ -634,7 +638,7 @@ export const getAdminOverview = createServerFn({ method: "GET" })
 
   // Region rollup by village
   const villageCounts = new Map<string, number>();
-  for (const p of profiles ?? []) {
+  for (const p of farmerProfiles) {
     const v = (p.village || "").trim() || "Unspecified";
     villageCounts.set(v, (villageCounts.get(v) ?? 0) + 1);
   }
@@ -662,7 +666,7 @@ export const getAdminOverview = createServerFn({ method: "GET" })
   const diagByUser = new Map<string, number>();
   for (const d of diagnoses ?? []) diagByUser.set(d.user_id, (diagByUser.get(d.user_id) ?? 0) + 1);
 
-  const farmers = (profiles ?? []).map((p) => {
+  const farmers = farmerProfiles.map((p) => {
     const pl = plotsByUser.get(p.id);
     return {
       id: p.id,
@@ -732,8 +736,9 @@ export const getAdminOverview = createServerFn({ method: "GET" })
     .sort((a, b) => b.sold - a.sold)
     .slice(0, 8);
 
-  // Gardens with owner
-  const gardensList = (gardens ?? []).slice(0, 12).map((g) => {
+  // Gardens with owner (exclude admin-owned gardens from farmer view)
+  const farmerGardens = (gardens ?? []).filter((g) => !adminIds.has(g.user_id));
+  const gardensList = farmerGardens.slice(0, 50).map((g) => {
     const pl = plotsByUser.get(g.user_id);
     return {
       id: g.id,
@@ -773,7 +778,7 @@ export const getAdminOverview = createServerFn({ method: "GET" })
     const dayStart = new Date(now - i * 86400000);
     dayStart.setHours(0, 0, 0, 0);
     const dayEnd = dayStart.getTime() + 86400000;
-    const count = (profiles ?? []).filter((p) => {
+    const count = farmerProfiles.filter((p) => {
       const t = new Date(p.created_at).getTime();
       return t >= dayStart.getTime() && t < dayEnd;
     }).length;
@@ -782,9 +787,9 @@ export const getAdminOverview = createServerFn({ method: "GET" })
 
   return {
     kpis: {
-      farmers: profiles?.length ?? 0,
-      onboarded: (profiles ?? []).filter((p) => p.onboarded).length,
-      gardens: gardens?.length ?? 0,
+      farmers: farmerProfiles.length,
+      onboarded: farmerProfiles.filter((p) => p.onboarded).length,
+      gardens: farmerGardens.length,
       plots_growing: (plots ?? []).filter((p) => p.status === "growing").length,
       diagnoses: diagnoses?.length ?? 0,
       orders: orders?.length ?? 0,
@@ -1039,6 +1044,48 @@ export const adminDeleteGarden = createServerFn({ method: "POST" })
     return { ok: true };
   });
 
+export const adminUpdateGarden = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((i: unknown) =>
+    z
+      .object({
+        id: z.string().uuid(),
+        name: z.string().min(1).optional(),
+        size_sqm: z.number().nonnegative().nullable().optional(),
+        location: z.string().nullable().optional(),
+      })
+      .parse(i),
+  )
+  .handler(async ({ data, context }) => {
+    await assertAdmin(context);
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const { id, ...patch } = data;
+    const { error } = await supabaseAdmin.from("gardens").update(patch).eq("id", id);
+    if (error) throw new Error(error.message);
+    await logAdmin(context.userId, "garden.update", "garden", id, patch);
+    return { ok: true };
+  });
+
+export const getSellEligibility = createServerFn({ method: "GET" })
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context }) => {
+    const { supabase, userId } = context;
+    const { count } = await supabase
+      .from("garden_events")
+      .select("id", { count: "exact", head: true })
+      .eq("user_id", userId)
+      .eq("kind", "harvested");
+    const harvests = count ?? 0;
+    return {
+      eligible: harvests > 0,
+      harvest_count: harvests,
+      message:
+        harvests > 0
+          ? null
+          : "You can only sell ginger after logging a harvest. Go to My Garden, plant ginger, then tap Harvest — your listing form will unlock automatically.",
+    };
+  });
+
 // ---------- Admin: audit log, roles, misc ----------
 
 export const listAdminAudit = createServerFn({ method: "GET" })
@@ -1046,16 +1093,33 @@ export const listAdminAudit = createServerFn({ method: "GET" })
   .handler(async ({ context }) => {
     await assertAdmin(context);
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-    const [{ data: rows }, { data: profiles }] = await Promise.all([
+    const [{ data: rows }, { data: profiles }, { data: gardens }] = await Promise.all([
       supabaseAdmin.from("admin_audit_log").select("*").order("created_at", { ascending: false }).limit(200),
       supabaseAdmin.from("profiles").select("id, full_name"),
+      supabaseAdmin.from("gardens").select("id, name, user_id"),
     ]);
     const byId = new Map((profiles ?? []).map((p) => [p.id, p.full_name || "Admin"]));
-    return (rows ?? []).map((r) => ({
-      ...r,
-      admin_name: byId.get(r.admin_id) || "Admin",
-      target_name: r.target_type === "user" && r.target_id ? byId.get(r.target_id) || null : null,
-    }));
+    const gardenById = new Map((gardens ?? []).map((g) => [g.id, g] as const));
+    return (rows ?? []).map((r) => {
+      let target_name: string | null = null;
+      let target_owner_id: string | null = null;
+      if (r.target_type === "user" && r.target_id) {
+        target_name = byId.get(r.target_id) || null;
+        target_owner_id = r.target_id;
+      } else if (r.target_type === "garden" && r.target_id) {
+        const g = gardenById.get(r.target_id);
+        if (g) {
+          target_name = g.name;
+          target_owner_id = g.user_id;
+        }
+      }
+      return {
+        ...r,
+        admin_name: byId.get(r.admin_id) || "Admin",
+        target_name,
+        target_owner_id,
+      };
+    });
   });
 
 export const checkIsAdmin = createServerFn({ method: "GET" })
