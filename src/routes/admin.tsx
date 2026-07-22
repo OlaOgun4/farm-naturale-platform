@@ -81,7 +81,8 @@ type WebScreen =
   | "market"
   | "finance"
   | "learning"
-  | "audit";
+  | "audit"
+  | "admins";
 
 const NAV: { id: WebScreen; label: string }[] = [
   { id: "dashboard", label: "Executive Dashboard" },
@@ -93,6 +94,7 @@ const NAV: { id: WebScreen; label: string }[] = [
   { id: "finance", label: "Finance" },
   { id: "learning", label: "Learning" },
   { id: "audit", label: "Audit Log" },
+  { id: "admins", label: "Admin Users" },
 ];
 
 function rupees(cents: number) {
@@ -577,34 +579,7 @@ function WebPanel({
   }
 
   if (screen === "market") {
-    return (
-      <div className="grid gap-3 md:grid-cols-2">
-        <Panel title="Top products" empty={data.topProducts.length === 0}>
-          {data.topProducts.map((p) => (
-            <Row
-              key={p.id}
-              left={<><span className="font-semibold">{p.title}</span> <span className="text-[color:var(--fn-muted)]">• {p.category}</span></>}
-              right={`${rupees(p.price_cents)} • ${p.sold} sold`}
-            />
-          ))}
-        </Panel>
-        <Panel title="Recent orders" empty={data.recentOrders.length === 0}>
-          {data.recentOrders.map((o) => (
-            <Row
-              key={o.id}
-              left={
-                <>
-                  <span className="font-semibold">{o.farmer}</span>
-                  <span className="text-[color:var(--fn-muted)]"> • {o.items.map((i) => `${i.title} ×${i.qty}`).join(", ") || "—"}</span>
-                </>
-              }
-              right={rupees(o.total_cents)}
-              status={o.status}
-            />
-          ))}
-        </Panel>
-      </div>
-    );
+    return <MarketplacePanel data={data} />;
   }
 
   if (screen === "finance") {
@@ -639,6 +614,9 @@ function WebPanel({
     );
   }
 
+  if (screen === "admins") {
+    return <AdminsPanel />;
+  }
   return <AuditPanel onImpersonate={onImpersonate} />;
 }
 
