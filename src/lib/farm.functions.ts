@@ -638,9 +638,12 @@ export const getAdminOverview = createServerFn({ method: "GET" })
   const profileById = new Map((profiles ?? []).map((p) => [p.id, p]));
   const moduleById = new Map((modules ?? []).map((m) => [m.id, m]));
 
-  const walletTotal = (txs ?? []).reduce((s, t) => (t.kind === "credit" ? s + t.amount_cents : s - t.amount_cents), 0);
-  const gmv = (orders ?? []).reduce((s, o) => s + (o.total_cents ?? 0), 0);
-  const payouts = (txs ?? []).filter((t) => t.kind === "payout").reduce((s, t) => s + t.amount_cents, 0);
+  const farmerTxs = (txs ?? []).filter((t) => !adminIds.has(t.user_id));
+  const farmerOrders = (orders ?? []).filter((o) => !adminIds.has(o.buyer_id));
+  const farmerDiagnoses = (diagnoses ?? []).filter((d) => !adminIds.has(d.user_id));
+  const walletTotal = farmerTxs.reduce((s, t) => (t.kind === "credit" ? s + t.amount_cents : s - t.amount_cents), 0);
+  const gmv = farmerOrders.reduce((s, o) => s + (o.total_cents ?? 0), 0);
+  const payouts = farmerTxs.filter((t) => t.kind === "payout").reduce((s, t) => s + t.amount_cents, 0);
 
   // Disease frequency
   const diseaseCounts = new Map<string, number>();
@@ -808,8 +811,8 @@ export const getAdminOverview = createServerFn({ method: "GET" })
       onboarded: farmerProfiles.filter((p) => p.onboarded).length,
       gardens: farmerGardens.length,
       plots_growing: (plots ?? []).filter((p) => p.status === "growing").length,
-      diagnoses: diagnoses?.length ?? 0,
-      orders: orders?.length ?? 0,
+      diagnoses: farmerDiagnoses.length,
+      orders: farmerOrders.length,
       gmv_cents: gmv,
       wallet_total_cents: walletTotal,
       payouts_cents: payouts,
@@ -1409,7 +1412,6 @@ export const adminDeleteAdmin = createServerFn({ method: "POST" })
   .inputValidator((i: unknown) => z.object({ user_id: z.string().uuid() }).parse(i))
   .handler(async ({ data, context }) => {
     await assertAdmin(context);
-    if (data.user_id === context.userId) throw new Error("Admins cannot delete their own account. Ask another admin.");
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
     try {
       await supabaseAdmin.auth.admin.deleteUser(data.user_id);
