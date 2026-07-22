@@ -355,6 +355,10 @@ export const createListing = createServerFn({ method: "POST" })
     if (!hay.includes("ginger")) {
       throw new Error("Marketplace only accepts ginger and ginger-related products. Please include 'ginger' in the title, category or description.");
     }
+    // Admin-role users cannot sell as farmers.
+    if (await isAdmin(context)) {
+      throw new Error("Admin accounts cannot sell on the marketplace. Use Marketplace management in the Web Admin instead.");
+    }
     // Sellers must have at least one harvested plot event before listing produce.
     const { count: harvests } = await supabase
       .from("garden_events")
