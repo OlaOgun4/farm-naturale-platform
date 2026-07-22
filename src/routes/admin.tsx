@@ -245,7 +245,15 @@ function AdminWorkspace() {
         toast.error("Admin access is already assigned to another user");
       }
     },
-    onError: (e) => toast.error(e instanceof Error ? e.message : "Unable to claim admin access"),
+    onError: async (e) => {
+      const msg = e instanceof Error ? e.message : "Unable to claim admin access";
+      toast.error(msg);
+      if (msg.toLowerCase().includes("stale")) {
+        try { await supabase.auth.signOut(); } catch {}
+        queryClient.clear();
+        window.location.reload();
+      }
+    },
   });
   const current = NAV.find((n) => n.id === active)!;
   const [impersonateId, setImpersonateId] = useState<string | null>(null);
