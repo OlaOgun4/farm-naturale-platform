@@ -1158,6 +1158,11 @@ export const claimAdmin = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }) => {
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    // Guard against stale JWTs pointing at a deleted auth.users row
+    const { data: userLookup, error: ulErr } = await supabaseAdmin.auth.admin.getUserById(context.userId);
+    if (ulErr || !userLookup?.user) {
+      throw new Error("Your session is stale. Please sign out and sign in again with a fresh account.");
+    }
     const { count, error: ce } = await supabaseAdmin
       .from("user_roles")
       .select("user_id", { count: "exact", head: true })
@@ -1173,6 +1178,13 @@ export const claimAdmin = createServerFn({ method: "POST" })
         .maybeSingle();
       return { is_admin: !!mine };
     }
+    // Ensure a profile row exists (trigger may not have fired for pre-existing users)
+    await supabaseAdmin
+      .from("profiles")
+      .upsert(
+        { id: context.userId, full_name: userLookup.user.user_metadata?.full_name ?? userLookup.user.email?.split("@")[0] ?? "Admin", onboarded: true },
+        { onConflict: "id" },
+      );
     const { error: ie } = await supabaseAdmin
       .from("user_roles")
       .insert({ user_id: context.userId, role: "admin" });
