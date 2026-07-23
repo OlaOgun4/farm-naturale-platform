@@ -582,7 +582,7 @@ export const completeModule = createServerFn({ method: "POST" })
 
 export const getAdminOverview = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
-  .handler(async ({ context }) => {
+  .handler(async ({ context }): Promise<any> => {
     await assertAdmin(context);
     return await callAdmin("admin_overview");
   });
@@ -592,7 +592,7 @@ export const getAdminOverview = createServerFn({ method: "GET" })
 export const getFarmerDetail = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
   .inputValidator((i: unknown) => z.object({ user_id: z.string().uuid() }).parse(i))
-  .handler(async ({ data, context }) => {
+  .handler(async ({ data, context }): Promise<any> => {
     await assertAdmin(context);
     return await callAdmin("farmer_detail", { user_id: data.user_id });
   });
@@ -754,7 +754,7 @@ export const getSellEligibility = createServerFn({ method: "GET" })
 
 export const listAdminAudit = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
-  .handler(async ({ context }) => {
+  .handler(async ({ context }): Promise<any> => {
     await assertAdmin(context);
     return await callAdmin("audit_list");
   });
@@ -860,7 +860,7 @@ export const getMobileAccess = createServerFn({ method: "GET" })
 
 export const adminListProducts = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
-  .handler(async ({ context }) => {
+  .handler(async ({ context }): Promise<any> => {
     await assertAdmin(context);
     return await callAdmin("product_list_admin");
   });
@@ -914,7 +914,7 @@ export const adminDeleteListing = createServerFn({ method: "POST" })
 
 export const adminListAdmins = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
-  .handler(async ({ context }) => {
+  .handler(async ({ context }): Promise<any> => {
     await assertAdmin(context);
     return await callAdmin("admin_list");
   });
