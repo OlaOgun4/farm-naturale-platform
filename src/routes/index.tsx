@@ -30,6 +30,7 @@ import { toast, Toaster } from "sonner";
 
 import { supabase } from "@/integrations/supabase/client";
 import { lovable } from "@/integrations/lovable";
+import { APP_VERSION } from "@/lib/version";
 import {
   addPlot,
   claimAdmin,
