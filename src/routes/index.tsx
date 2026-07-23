@@ -30,6 +30,7 @@ import { toast, Toaster } from "sonner";
 
 import { supabase } from "@/integrations/supabase/client";
 import { lovable } from "@/integrations/lovable";
+import { APP_VERSION } from "@/lib/version";
 import {
   addPlot,
   claimAdmin,
@@ -192,12 +193,14 @@ function TopBar({ signedIn }: { signedIn: boolean }) {
         </div>
         <div className="min-w-0">
           <h1 className="truncate text-xl font-black text-fn-green-2 md:text-[26px]">Farm Naturale</h1>
-          <p className="mt-0.5 text-[11px] font-medium text-muted-foreground md:text-sm">Grow • Learn • Prosper</p>
+          <p className="mt-0.5 text-[11px] font-medium text-muted-foreground md:text-sm">
+            Grow • Learn • Prosper <span className="ml-1 opacity-70">· v{APP_VERSION}</span>
+          </p>
         </div>
       </div>
       <nav className="flex shrink-0 items-center gap-2">
         <span className="rounded-full bg-primary px-2.5 py-1.5 text-[11px] font-extrabold text-primary-foreground md:px-3 md:text-xs">
-          Farmer App
+          Farmer App v{APP_VERSION}
         </span>
         {signedIn ? (
           <button

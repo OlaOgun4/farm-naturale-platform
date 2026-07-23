@@ -3,6 +3,7 @@ import { useQuery, useMutation, useQueryClient, queryOptions } from "@tanstack/r
 import { useServerFn } from "@tanstack/react-start";
 import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
+import { APP_VERSION } from "@/lib/version";
 import {
   getAdminOverview,
   getFarmerDetail,
@@ -324,13 +325,13 @@ function AdminWorkspace() {
               Farm Naturale
             </h1>
             <p className="m-0 mt-0.5 text-sm text-[color:var(--fn-muted)]">
-              Grow • Learn • Prosper
+              Grow • Learn • Prosper · v{APP_VERSION}
             </p>
           </div>
         </div>
         <nav className="flex items-center gap-2">
           <span className="rounded-full bg-[color:var(--fn-green)] px-3 py-1.5 text-xs font-semibold text-white">
-            Web Admin
+            Web Admin v{APP_VERSION}
           </span>
           <button
             onClick={async () => {
