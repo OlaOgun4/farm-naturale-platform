@@ -862,16 +862,7 @@ export const adminListProducts = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }) => {
     await assertAdmin(context);
-    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-    const [{ data: products }, { data: profiles }] = await Promise.all([
-      supabaseAdmin.from("products").select("*").order("created_at", { ascending: false }),
-      supabaseAdmin.from("profiles").select("id, full_name"),
-    ]);
-    const byId = new Map((profiles ?? []).map((p) => [p.id, p.full_name || "Farmer"]));
-    return (products ?? []).map((p) => ({
-      ...p,
-      seller_name: p.seller_id ? byId.get(p.seller_id) ?? "Farmer" : "Platform (Admin)",
-    }));
+    return await callAdmin("product_list_admin");
   });
 
 export const adminCreateListing = createServerFn({ method: "POST" })
@@ -890,28 +881,7 @@ export const adminCreateListing = createServerFn({ method: "POST" })
   )
   .handler(async ({ data, context }) => {
     await assertAdmin(context);
-    const hay = `${data.title} ${data.category} ${data.description}`.toLowerCase();
-    if (!hay.includes("ginger")) {
-      throw new Error("Marketplace only accepts ginger and ginger-related products.");
-    }
-    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-    const { data: row, error } = await supabaseAdmin
-      .from("products")
-      .insert({
-        seller_id: null,
-        title: data.title,
-        category: data.category,
-        description: data.description,
-        price_cents: data.price_cents,
-        unit: data.unit,
-        stock: data.stock,
-        is_seed: false,
-      })
-      .select()
-      .single();
-    if (error) throw new Error(error.message);
-    await logAdmin(context.userId, "product.create", "product", row.id, { title: row.title });
-    return row;
+    return await callAdmin("product_create_admin", data as unknown as Record<string, unknown>);
   });
 
 export const adminUpdateListing = createServerFn({ method: "POST" })
@@ -929,12 +899,7 @@ export const adminUpdateListing = createServerFn({ method: "POST" })
   )
   .handler(async ({ data, context }) => {
     await assertAdmin(context);
-    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-    const { id, ...patch } = data;
-    const { error } = await supabaseAdmin.from("products").update(patch).eq("id", id);
-    if (error) throw new Error(error.message);
-    await logAdmin(context.userId, "product.update", "product", id, patch);
-    return { ok: true };
+    return await callAdmin("product_update_admin", data as unknown as Record<string, unknown>);
   });
 
 export const adminDeleteListing = createServerFn({ method: "POST" })
@@ -942,11 +907,7 @@ export const adminDeleteListing = createServerFn({ method: "POST" })
   .inputValidator((i: unknown) => z.object({ id: z.string().uuid() }).parse(i))
   .handler(async ({ data, context }) => {
     await assertAdmin(context);
-    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-    const { error } = await supabaseAdmin.from("products").delete().eq("id", data.id);
-    if (error) throw new Error(error.message);
-    await logAdmin(context.userId, "product.delete", "product", data.id, null);
-    return { ok: true };
+    return await callAdmin("product_delete_admin", { id: data.id });
   });
 
 // ---------- Admin: admin-user CRUD ----------
@@ -955,35 +916,7 @@ export const adminListAdmins = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }) => {
     await assertAdmin(context);
-    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-    const { data: roles } = await supabaseAdmin.from("user_roles").select("user_id, created_at").eq("role", "admin");
-    const ids = (roles ?? []).map((r) => r.user_id);
-    if (ids.length === 0) return [];
-    const sorted = [...(roles ?? [])].sort(
-      (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime(),
-    );
-    const firstAdminId = sorted[0]?.user_id ?? null;
-    const { data: profiles } = await supabaseAdmin.from("profiles").select("id, full_name").in("id", ids);
-    const nameById = new Map((profiles ?? []).map((p) => [p.id, p.full_name || "Admin"]));
-    // Get emails via auth admin API
-    const rows = await Promise.all(
-      (roles ?? []).map(async (r) => {
-        let email: string | null = null;
-        try {
-          const { data } = await supabaseAdmin.auth.admin.getUserById(r.user_id);
-          email = data.user?.email ?? null;
-        } catch {}
-        return {
-          user_id: r.user_id,
-          full_name: nameById.get(r.user_id) ?? "Admin",
-          email,
-          created_at: r.created_at,
-          is_self: r.user_id === context.userId,
-          is_first: r.user_id === firstAdminId,
-        };
-      }),
-    );
-    return rows;
+    return await callAdmin("admin_list");
   });
 
 export const adminCreateAdmin = createServerFn({ method: "POST" })
@@ -993,23 +926,7 @@ export const adminCreateAdmin = createServerFn({ method: "POST" })
   )
   .handler(async ({ data, context }) => {
     await assertAdmin(context);
-    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-    const { data: created, error } = await supabaseAdmin.auth.admin.createUser({
-      email: data.email,
-      password: data.password,
-      email_confirm: true,
-      user_metadata: { full_name: data.full_name },
-    });
-    if (error || !created.user) throw new Error(error?.message ?? "Failed to create user");
-    const uid = created.user.id;
-    // Ensure profile exists (trigger may or may not have fired)
-    await supabaseAdmin
-      .from("profiles")
-      .upsert({ id: uid, full_name: data.full_name, onboarded: true }, { onConflict: "id" });
-    const { error: re } = await supabaseAdmin.from("user_roles").insert({ user_id: uid, role: "admin" });
-    if (re) throw new Error(re.message);
-    await logAdmin(context.userId, "admin.create", "user", uid, { email: data.email });
-    return { ok: true, user_id: uid };
+    return await callAdmin("admin_create", data as unknown as Record<string, unknown>);
   });
 
 export const adminDeleteAdmin = createServerFn({ method: "POST" })
@@ -1017,25 +934,5 @@ export const adminDeleteAdmin = createServerFn({ method: "POST" })
   .inputValidator((i: unknown) => z.object({ user_id: z.string().uuid() }).parse(i))
   .handler(async ({ data, context }) => {
     await assertAdmin(context);
-    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-    // Protect the first admin ever created — the root account cannot be removed.
-    const { data: roles } = await supabaseAdmin
-      .from("user_roles")
-      .select("user_id, created_at")
-      .eq("role", "admin")
-      .order("created_at", { ascending: true })
-      .limit(1);
-    const firstAdminId = roles?.[0]?.user_id ?? null;
-    if (firstAdminId && data.user_id === firstAdminId) {
-      throw new Error("The first admin account cannot be deleted.");
-    }
-    try {
-      await supabaseAdmin.auth.admin.deleteUser(data.user_id);
-    } catch (e) {
-      console.error("auth.admin.deleteUser failed", e);
-      await supabaseAdmin.from("user_roles").delete().eq("user_id", data.user_id);
-      await supabaseAdmin.from("profiles").delete().eq("id", data.user_id);
-    }
-    await logAdmin(context.userId, "admin.delete", "user", data.user_id, null);
-    return { ok: true };
+    return await callAdmin("admin_delete", { user_id: data.user_id });
   });
