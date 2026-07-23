@@ -241,8 +241,7 @@ function AdminWorkspace() {
     ...overviewQueryOptions,
     enabled: adminStatus.data?.is_admin === true,
     retry: false,
-  });
-  const data: any = (arguments as any)[0]; // never — see below
+  }) as { data: any; isLoading: boolean; error: unknown };
   const claim = useMutation({
     mutationFn: useServerFn(claimAdmin),
     onSuccess: (result) => {
