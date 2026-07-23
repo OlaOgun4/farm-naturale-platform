@@ -290,17 +290,15 @@ export const listDiagnoses = createServerFn({ method: "GET" })
       .eq("user_id", userId)
       .order("created_at", { ascending: false })
       .limit(20);
-    // Sign photo URLs for display
-    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-    const out = await Promise.all(
-      (data ?? []).map(async (d) => {
-        const { data: url } = await supabaseAdmin.storage
-          .from("crop-photos")
-          .createSignedUrl(d.photo_path, 60 * 30);
-        return { ...d, photo_url: url?.signedUrl ?? null };
-      }),
-    );
-    return out;
+    // Sign photo URLs for display via the admin-actions edge function
+    const paths = (data ?? []).map((d) => d.photo_path);
+    const urls = paths.length
+      ? await callAdmin<Record<string, string | null>>("sign_crop_photos", {
+          paths,
+          ttl: 60 * 30,
+        })
+      : {};
+    return (data ?? []).map((d) => ({ ...d, photo_url: urls[d.photo_path] ?? null }));
   });
 
 // ---------- Marketplace ----------
@@ -420,12 +418,11 @@ export const placeOrder = createServerFn({ method: "POST" })
     });
 
     // Decrement product stock so sold-out items disappear from marketplace.
-    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
     const remainingStock = Math.max(0, (product.stock ?? 0) - data.qty);
-    await supabaseAdmin
-      .from("products")
-      .update({ stock: remainingStock })
-      .eq("id", product.id);
+    await callAdmin("product_decrement_stock", {
+      product_id: product.id,
+      remaining: remainingStock,
+    });
 
     return {
       ...order,
