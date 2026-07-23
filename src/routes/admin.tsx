@@ -3,6 +3,7 @@ import { useQuery, useMutation, useQueryClient, queryOptions } from "@tanstack/r
 import { useServerFn } from "@tanstack/react-start";
 import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
+import { APP_VERSION } from "@/lib/version";
 import {
   getAdminOverview,
   getFarmerDetail,
