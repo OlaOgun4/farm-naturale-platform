@@ -191,21 +191,11 @@ export const uploadCropPhoto = createServerFn({ method: "POST" })
   .inputValidator((i: unknown) =>
     z.object({ data_url: z.string().startsWith("data:"), filename: z.string().default("leaf.jpg") }).parse(i),
   )
-  .handler(async ({ data, context }) => {
-    const { userId } = context;
-    const match = data.data_url.match(/^data:([^;]+);base64,(.+)$/);
-    if (!match) throw new Error("Invalid image data");
-    const [, mime, b64] = match;
-    const bytes = Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
-    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-    const ext = mime.split("/")[1] ?? "jpg";
-    const path = `${userId}/${crypto.randomUUID()}.${ext}`;
-    const { error } = await supabaseAdmin.storage.from("crop-photos").upload(path, bytes, {
-      contentType: mime,
-      upsert: false,
+  .handler(async ({ data }) => {
+    return await callAdmin<{ path: string; mime: string }>("upload_crop_photo", {
+      data_url: data.data_url,
+      filename: data.filename,
     });
-    if (error) throw new Error(error.message);
-    return { path, mime };
   });
 
 export const diagnoseCropPhoto = createServerFn({ method: "POST" })
@@ -218,10 +208,10 @@ export const diagnoseCropPhoto = createServerFn({ method: "POST" })
     const apiKey = process.env.LOVABLE_API_KEY;
     if (!apiKey) throw new Error("AI service is not configured");
 
-    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-    const { data: signed } = await supabaseAdmin.storage
-      .from("crop-photos")
-      .createSignedUrl(data.photo_path, 60 * 10);
+    const signed = await callAdmin<{ signedUrl: string | null }>("sign_crop_photo", {
+      path: data.photo_path,
+      ttl: 60 * 10,
+    });
     if (!signed?.signedUrl) throw new Error("Photo not found");
 
     // Fetch image, convert to base64 data URL for the model
