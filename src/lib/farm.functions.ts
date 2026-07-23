@@ -1,6 +1,7 @@
 import { createServerFn } from "@tanstack/react-start";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { z } from "zod";
+import { callAdmin } from "./admin-bridge.server";
 
 // ---------- Admin helpers ----------
 
@@ -27,16 +28,8 @@ async function isAdmin(context: AuthCtx): Promise<boolean> {
   return !!data;
 }
 
-async function logAdmin(adminId: string, action: string, targetType: string, targetId: string, details: unknown) {
-  const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-  await supabaseAdmin.from("admin_audit_log").insert({
-    admin_id: adminId,
-    action,
-    target_type: targetType,
-    target_id: targetId,
-    details: details as never,
-  });
-}
+// Note: audit-log writes now happen inside the admin-actions Edge Function
+// alongside each privileged mutation, so a separate helper is no longer needed.
 
 // ---------- Profile ----------
 
