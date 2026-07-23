@@ -46,7 +46,9 @@ export type AdminAction =
  * - When called inside a server function that used `requireSupabaseAuth`,
  *   the incoming request's Authorization header is forwarded automatically.
  */
-export async function callAdmin<T = unknown>(
+// deno-lint-ignore-file no-explicit-any
+// Default T = any so TanStack server-fn return-type inference stays serializable-friendly.
+export async function callAdmin<T = any>(
   action: AdminAction,
   payload: Record<string, unknown> = {},
   opts: { requireAuth?: boolean } = {},
