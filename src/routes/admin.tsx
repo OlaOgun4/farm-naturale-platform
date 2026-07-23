@@ -436,7 +436,9 @@ function Row({ left, right, status }: { left: React.ReactNode; right?: React.Rea
   );
 }
 
-type OverviewData = Awaited<ReturnType<typeof getAdminOverview>>;
+// Server functions now proxy privileged reads to the admin-actions edge function,
+// so return types are dynamic (Promise<any>). Treat as any at the boundary.
+type OverviewData = any;
 
 function WebPanel({
   screen,
