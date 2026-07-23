@@ -689,22 +689,11 @@ export const adminTopUpWallet = createServerFn({ method: "POST" })
   )
   .handler(async ({ data, context }) => {
     await assertAdmin(context);
-    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-    // Validate farmer exists
-    const { data: farmer } = await supabaseAdmin.from("profiles").select("id").eq("id", data.user_id).maybeSingle();
-    if (!farmer) throw new Error("Farmer not found");
-    const { error } = await supabaseAdmin.from("wallet_transactions").insert({
+    return await callAdmin("wallet_top_up", {
       user_id: data.user_id,
-      kind: "credit",
       amount_cents: data.amount_cents,
-      reason: data.reason || "Admin wallet top-up",
+      reason: data.reason ?? null,
     });
-    if (error) throw new Error(error.message);
-    await logAdmin(context.userId, "wallet.top_up", "user", data.user_id, {
-      amount_cents: data.amount_cents,
-      reason: data.reason || "Admin wallet top-up",
-    });
-    return { ok: true };
   });
 
 export const adminDeleteFarmer = createServerFn({ method: "POST" })
@@ -713,22 +702,7 @@ export const adminDeleteFarmer = createServerFn({ method: "POST" })
   .handler(async ({ data, context }) => {
     await assertAdmin(context);
     if (data.user_id === context.userId) throw new Error("Admins cannot delete their own account");
-    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-    const uid = data.user_id;
-    // FK ON DELETE CASCADE handles the rest — order_items still need cleanup because
-    // they hang off orders, which cascade themselves. Keeping an explicit sweep for safety.
-    const { data: orders } = await supabaseAdmin.from("orders").select("id").eq("buyer_id", uid);
-    const orderIds = (orders ?? []).map((o) => o.id);
-    if (orderIds.length) await supabaseAdmin.from("order_items").delete().in("order_id", orderIds);
-    try {
-      await supabaseAdmin.auth.admin.deleteUser(uid);
-    } catch (e) {
-      console.error("auth.admin.deleteUser failed", e);
-      // Fallback: if auth delete fails, remove profile so cascades still fire on public rows.
-      await supabaseAdmin.from("profiles").delete().eq("id", uid);
-    }
-    await logAdmin(context.userId, "farmer.delete", "user", uid, null);
-    return { ok: true };
+    return await callAdmin("farmer_delete", { user_id: data.user_id });
   });
 
 export const adminDeleteGarden = createServerFn({ method: "POST" })
@@ -736,17 +710,7 @@ export const adminDeleteGarden = createServerFn({ method: "POST" })
   .inputValidator((i: unknown) => z.object({ id: z.string().uuid() }).parse(i))
   .handler(async ({ data, context }) => {
     await assertAdmin(context);
-    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-    const { data: plots } = await supabaseAdmin.from("plots").select("id").eq("garden_id", data.id);
-    const plotIds = (plots ?? []).map((p) => p.id);
-    if (plotIds.length) {
-      await supabaseAdmin.from("garden_events").delete().in("plot_id", plotIds);
-      await supabaseAdmin.from("plots").delete().in("id", plotIds);
-    }
-    const { error } = await supabaseAdmin.from("gardens").delete().eq("id", data.id);
-    if (error) throw new Error(error.message);
-    await logAdmin(context.userId, "garden.delete", "garden", data.id, null);
-    return { ok: true };
+    return await callAdmin("garden_delete", { id: data.id });
   });
 
 export const adminUpdateGarden = createServerFn({ method: "POST" })
@@ -763,12 +727,7 @@ export const adminUpdateGarden = createServerFn({ method: "POST" })
   )
   .handler(async ({ data, context }) => {
     await assertAdmin(context);
-    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-    const { id, ...patch } = data;
-    const { error } = await supabaseAdmin.from("gardens").update(patch).eq("id", id);
-    if (error) throw new Error(error.message);
-    await logAdmin(context.userId, "garden.update", "garden", id, patch);
-    return { ok: true };
+    return await callAdmin("garden_update", data as unknown as Record<string, unknown>);
   });
 
 export const getSellEligibility = createServerFn({ method: "GET" })
@@ -797,34 +756,7 @@ export const listAdminAudit = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }) => {
     await assertAdmin(context);
-    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-    const [{ data: rows }, { data: profiles }, { data: gardens }] = await Promise.all([
-      supabaseAdmin.from("admin_audit_log").select("*").order("created_at", { ascending: false }).limit(200),
-      supabaseAdmin.from("profiles").select("id, full_name"),
-      supabaseAdmin.from("gardens").select("id, name, user_id"),
-    ]);
-    const byId = new Map((profiles ?? []).map((p) => [p.id, p.full_name || "Admin"]));
-    const gardenById = new Map((gardens ?? []).map((g) => [g.id, g] as const));
-    return (rows ?? []).map((r) => {
-      let target_name: string | null = null;
-      let target_owner_id: string | null = null;
-      if (r.target_type === "user" && r.target_id) {
-        target_name = byId.get(r.target_id) || null;
-        target_owner_id = r.target_id;
-      } else if (r.target_type === "garden" && r.target_id) {
-        const g = gardenById.get(r.target_id);
-        if (g) {
-          target_name = g.name;
-          target_owner_id = g.user_id;
-        }
-      }
-      return {
-        ...r,
-        admin_name: byId.get(r.admin_id) || "Admin",
-        target_name,
-        target_owner_id,
-      };
-    });
+    return await callAdmin("audit_list");
   });
 
 export const checkIsAdmin = createServerFn({ method: "GET" })
@@ -840,51 +772,13 @@ export const checkIsAdmin = createServerFn({ method: "GET" })
   });
 
 export const hasAnyAdmin = createServerFn({ method: "GET" }).handler(async () => {
-  const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-  const { count } = await supabaseAdmin
-    .from("user_roles")
-    .select("user_id", { count: "exact", head: true })
-    .eq("role", "admin");
-  return { has_any: (count ?? 0) > 0 };
+  return await callAdmin("hasAnyAdmin");
 });
 
 export const claimAdmin = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .handler(async ({ context }) => {
-    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-    // Guard against stale JWTs pointing at a deleted auth.users row
-    const { data: userLookup, error: ulErr } = await supabaseAdmin.auth.admin.getUserById(context.userId);
-    if (ulErr || !userLookup?.user) {
-      throw new Error("Your session is stale. Please sign out and sign in again with a fresh account.");
-    }
-    const { count, error: ce } = await supabaseAdmin
-      .from("user_roles")
-      .select("user_id", { count: "exact", head: true })
-      .eq("role", "admin");
-    if (ce) throw new Error(ce.message);
-    const hasAny = (count ?? 0) > 0;
-    if (hasAny) {
-      const { data: mine } = await supabaseAdmin
-        .from("user_roles")
-        .select("role")
-        .eq("user_id", context.userId)
-        .eq("role", "admin")
-        .maybeSingle();
-      return { is_admin: !!mine };
-    }
-    // Ensure a profile row exists (trigger may not have fired for pre-existing users)
-    await supabaseAdmin
-      .from("profiles")
-      .upsert(
-        { id: context.userId, full_name: userLookup.user.user_metadata?.full_name ?? userLookup.user.email?.split("@")[0] ?? "Admin", onboarded: true },
-        { onConflict: "id" },
-      );
-    const { error: ie } = await supabaseAdmin
-      .from("user_roles")
-      .insert({ user_id: context.userId, role: "admin" });
-    if (ie) throw new Error(ie.message);
-    await logAdmin(context.userId, "admin.claimed", "user", context.userId, null);
-    return { is_admin: true };
+  .handler(async () => {
+    return await callAdmin("claim_admin");
   });
 
 // ---------- Farmer: harvest history + water reminders ----------
