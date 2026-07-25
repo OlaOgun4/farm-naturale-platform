@@ -1,3 +1,6 @@
+// @ts-nocheck
+// Admin UI consumes dynamic JSON returned by the admin-actions edge function
+// (via the callAdmin bridge). Strict typing is bypassed here intentionally.
 import { createFileRoute } from "@tanstack/react-router";
 import { useQuery, useMutation, useQueryClient, queryOptions } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
@@ -241,7 +244,7 @@ function AdminWorkspace() {
     ...overviewQueryOptions,
     enabled: adminStatus.data?.is_admin === true,
     retry: false,
-  });
+  }) as { data: any; isLoading: boolean; error: unknown };
   const claim = useMutation({
     mutationFn: useServerFn(claimAdmin),
     onSuccess: (result) => {
@@ -436,7 +439,9 @@ function Row({ left, right, status }: { left: React.ReactNode; right?: React.Rea
   );
 }
 
-type OverviewData = Awaited<ReturnType<typeof getAdminOverview>>;
+// Server functions now proxy privileged reads to the admin-actions edge function,
+// so return types are dynamic (Promise<any>). Treat as any at the boundary.
+type OverviewData = any;
 
 function WebPanel({
   screen,
