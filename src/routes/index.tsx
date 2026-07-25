@@ -220,7 +220,7 @@ function TopBar({ signedIn }: { signedIn: boolean }) {
 }
 
 // ---------------------------------------------------------------------------
-// AUTH OLA Added to Test deployment to Cloudflare
+// AUTH
 // ---------------------------------------------------------------------------
 
 function AuthScreen() {
