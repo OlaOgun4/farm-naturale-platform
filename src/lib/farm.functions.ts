@@ -1,6 +1,7 @@
 import { createServerFn } from "@tanstack/react-start";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { z } from "zod";
+import { callAdmin } from "./admin-bridge.server";
 
 // ---------- Admin helpers ----------
 
@@ -27,16 +28,8 @@ async function isAdmin(context: AuthCtx): Promise<boolean> {
   return !!data;
 }
 
-async function logAdmin(adminId: string, action: string, targetType: string, targetId: string, details: unknown) {
-  const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-  await supabaseAdmin.from("admin_audit_log").insert({
-    admin_id: adminId,
-    action,
-    target_type: targetType,
-    target_id: targetId,
-    details: details as never,
-  });
-}
+// Note: audit-log writes now happen inside the admin-actions Edge Function
+// alongside each privileged mutation, so a separate helper is no longer needed.
 
 // ---------- Profile ----------
 
@@ -198,21 +191,11 @@ export const uploadCropPhoto = createServerFn({ method: "POST" })
   .inputValidator((i: unknown) =>
     z.object({ data_url: z.string().startsWith("data:"), filename: z.string().default("leaf.jpg") }).parse(i),
   )
-  .handler(async ({ data, context }) => {
-    const { userId } = context;
-    const match = data.data_url.match(/^data:([^;]+);base64,(.+)$/);
-    if (!match) throw new Error("Invalid image data");
-    const [, mime, b64] = match;
-    const bytes = Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
-    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-    const ext = mime.split("/")[1] ?? "jpg";
-    const path = `${userId}/${crypto.randomUUID()}.${ext}`;
-    const { error } = await supabaseAdmin.storage.from("crop-photos").upload(path, bytes, {
-      contentType: mime,
-      upsert: false,
+  .handler(async ({ data }) => {
+    return await callAdmin<{ path: string; mime: string }>("upload_crop_photo", {
+      data_url: data.data_url,
+      filename: data.filename,
     });
-    if (error) throw new Error(error.message);
-    return { path, mime };
   });
 
 export const diagnoseCropPhoto = createServerFn({ method: "POST" })
@@ -225,10 +208,10 @@ export const diagnoseCropPhoto = createServerFn({ method: "POST" })
     const apiKey = process.env.LOVABLE_API_KEY;
     if (!apiKey) throw new Error("AI service is not configured");
 
-    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-    const { data: signed } = await supabaseAdmin.storage
-      .from("crop-photos")
-      .createSignedUrl(data.photo_path, 60 * 10);
+    const signed = await callAdmin<{ signedUrl: string | null }>("sign_crop_photo", {
+      path: data.photo_path,
+      ttl: 60 * 10,
+    });
     if (!signed?.signedUrl) throw new Error("Photo not found");
 
     // Fetch image, convert to base64 data URL for the model
@@ -307,17 +290,15 @@ export const listDiagnoses = createServerFn({ method: "GET" })
       .eq("user_id", userId)
       .order("created_at", { ascending: false })
       .limit(20);
-    // Sign photo URLs for display
-    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-    const out = await Promise.all(
-      (data ?? []).map(async (d) => {
-        const { data: url } = await supabaseAdmin.storage
-          .from("crop-photos")
-          .createSignedUrl(d.photo_path, 60 * 30);
-        return { ...d, photo_url: url?.signedUrl ?? null };
-      }),
-    );
-    return out;
+    // Sign photo URLs for display via the admin-actions edge function
+    const paths = (data ?? []).map((d) => d.photo_path);
+    const urls = paths.length
+      ? await callAdmin<Record<string, string | null>>("sign_crop_photos", {
+          paths,
+          ttl: 60 * 30,
+        })
+      : {};
+    return (data ?? []).map((d) => ({ ...d, photo_url: urls[d.photo_path] ?? null }));
   });
 
 // ---------- Marketplace ----------
@@ -437,12 +418,11 @@ export const placeOrder = createServerFn({ method: "POST" })
     });
 
     // Decrement product stock so sold-out items disappear from marketplace.
-    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
     const remainingStock = Math.max(0, (product.stock ?? 0) - data.qty);
-    await supabaseAdmin
-      .from("products")
-      .update({ stock: remainingStock })
-      .eq("id", product.id);
+    await callAdmin("product_decrement_stock", {
+      product_id: product.id,
+      remaining: remainingStock,
+    });
 
     return {
       ...order,
@@ -602,314 +582,19 @@ export const completeModule = createServerFn({ method: "POST" })
 
 export const getAdminOverview = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
-  .handler(async ({ context }) => {
+  .handler(async ({ context }): Promise<any> => {
     await assertAdmin(context);
-  const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-  const [
-    { data: profiles },
-    { data: gardens },
-    { data: plots },
-    { data: diagnoses },
-    { data: orders },
-    { data: orderItems },
-    { data: products },
-    { data: txs },
-    { data: consulting },
-    { data: certificates },
-    { data: modules },
-    { data: adminRoles },
-  ] = await Promise.all([
-    supabaseAdmin.from("profiles").select("id, full_name, village, land_size_acres, phone, created_at, onboarded").order("created_at", { ascending: false }),
-    supabaseAdmin.from("gardens").select("id, user_id, name, size_sqm, location, created_at"),
-    supabaseAdmin.from("plots").select("id, user_id, garden_id, crop, status, created_at"),
-    supabaseAdmin.from("diagnoses").select("id, user_id, crop, disease, severity, confidence, created_at").order("created_at", { ascending: false }),
-    supabaseAdmin.from("orders").select("id, buyer_id, total_cents, status, created_at").order("created_at", { ascending: false }),
-    supabaseAdmin.from("order_items").select("order_id, product_id, title, qty, unit_price_cents"),
-    supabaseAdmin.from("products").select("id, title, category, price_cents, unit, stock, seller_id"),
-    supabaseAdmin.from("wallet_transactions").select("user_id, kind, amount_cents, reason, created_at"),
-    supabaseAdmin.from("consulting_requests").select("id, user_id, question, crop, reply, replied_at, created_at").order("created_at", { ascending: false }),
-    supabaseAdmin.from("certificates").select("id, user_id, module_id, issued_at, code"),
-    supabaseAdmin.from("learning_modules").select("id, title"),
-    supabaseAdmin.from("user_roles").select("user_id").eq("role", "admin"),
-  ]);
-
-  const adminIds = new Set((adminRoles ?? []).map((r) => r.user_id));
-  const farmerProfiles = (profiles ?? []).filter((p) => !adminIds.has(p.id));
-  const profileById = new Map((profiles ?? []).map((p) => [p.id, p]));
-  const moduleById = new Map((modules ?? []).map((m) => [m.id, m]));
-
-  const farmerTxs = (txs ?? []).filter((t) => !adminIds.has(t.user_id));
-  const farmerOrders = (orders ?? []).filter((o) => !adminIds.has(o.buyer_id));
-  const farmerDiagnoses = (diagnoses ?? []).filter((d) => !adminIds.has(d.user_id));
-  const walletTotal = farmerTxs.reduce((s, t) => (t.kind === "credit" ? s + t.amount_cents : s - t.amount_cents), 0);
-  const gmv = farmerOrders.reduce((s, o) => s + (o.total_cents ?? 0), 0);
-  const payouts = farmerTxs.filter((t) => t.kind === "payout").reduce((s, t) => s + t.amount_cents, 0);
-
-  // Disease frequency
-  const diseaseCounts = new Map<string, number>();
-  for (const d of diagnoses ?? []) {
-    if (!d.disease || d.disease === "Healthy") continue;
-    diseaseCounts.set(d.disease, (diseaseCounts.get(d.disease) ?? 0) + 1);
-  }
-  const topDiseases = [...diseaseCounts.entries()]
-    .sort((a, b) => b[1] - a[1])
-    .slice(0, 6)
-    .map(([disease, count]) => ({ disease, count }));
-
-  // Region rollup by village
-  const villageCounts = new Map<string, number>();
-  for (const p of farmerProfiles) {
-    const v = (p.village || "").trim() || "Unspecified";
-    villageCounts.set(v, (villageCounts.get(v) ?? 0) + 1);
-  }
-  const regions = [...villageCounts.entries()]
-    .sort((a, b) => b[1] - a[1])
-    .slice(0, 8)
-    .map(([village, count]) => ({ village, count }));
-
-  // Farmers list with rollups
-  const gardensByUser = new Map<string, number>();
-  for (const g of gardens ?? []) gardensByUser.set(g.user_id, (gardensByUser.get(g.user_id) ?? 0) + 1);
-  const plotsByUser = new Map<string, { total: number; growing: number; crops: Set<string> }>();
-  for (const pl of plots ?? []) {
-    const cur = plotsByUser.get(pl.user_id) ?? { total: 0, growing: 0, crops: new Set<string>() };
-    cur.total++;
-    if (pl.status === "growing") cur.growing++;
-    if (pl.crop) cur.crops.add(pl.crop);
-    plotsByUser.set(pl.user_id, cur);
-  }
-  const walletByUser = new Map<string, number>();
-  for (const t of txs ?? []) {
-    const cur = walletByUser.get(t.user_id) ?? 0;
-    walletByUser.set(t.user_id, cur + (t.kind === "credit" ? t.amount_cents : -t.amount_cents));
-  }
-  const diagByUser = new Map<string, number>();
-  for (const d of diagnoses ?? []) diagByUser.set(d.user_id, (diagByUser.get(d.user_id) ?? 0) + 1);
-
-  const farmers = farmerProfiles.map((p) => {
-    const pl = plotsByUser.get(p.id);
-    return {
-      id: p.id,
-      full_name: p.full_name || "Unnamed farmer",
-      village: p.village || "—",
-      land_size_acres: p.land_size_acres ?? 0,
-      phone: p.phone || "",
-      onboarded: !!p.onboarded,
-      gardens: gardensByUser.get(p.id) ?? 0,
-      plots: pl?.total ?? 0,
-      growing: pl?.growing ?? 0,
-      crops: pl ? [...pl.crops] : [],
-      wallet_cents: walletByUser.get(p.id) ?? 0,
-      diagnoses: diagByUser.get(p.id) ?? 0,
-      created_at: p.created_at,
-    };
+    return await callAdmin("admin_overview");
   });
-
-  // Recent diagnostics with farmer name
-  const recentDiagnoses = (diagnoses ?? []).slice(0, 10).map((d) => ({
-    id: d.id,
-    farmer: profileById.get(d.user_id)?.full_name || "Farmer",
-    village: profileById.get(d.user_id)?.village || "—",
-    crop: d.crop || "—",
-    disease: d.disease,
-    severity: d.severity,
-    confidence: d.confidence,
-    created_at: d.created_at,
-  }));
-
-  // Recent orders with farmer + items
-  const itemsByOrder = new Map<string, { title: string; qty: number }[]>();
-  for (const it of orderItems ?? []) {
-    const list = itemsByOrder.get(it.order_id) ?? [];
-    list.push({ title: it.title, qty: it.qty });
-    itemsByOrder.set(it.order_id, list);
-  }
-  const recentOrders = (orders ?? []).slice(0, 10).map((o) => ({
-    id: o.id,
-    farmer: profileById.get(o.buyer_id)?.full_name || "Farmer",
-    village: profileById.get(o.buyer_id)?.village || "—",
-    total_cents: o.total_cents,
-    status: o.status,
-    items: itemsByOrder.get(o.id) ?? [],
-    created_at: o.created_at,
-  }));
-
-  // Product performance
-  const soldByProduct = new Map<string, { qty: number; revenue_cents: number }>();
-  for (const it of orderItems ?? []) {
-    const cur = soldByProduct.get(it.product_id) ?? { qty: 0, revenue_cents: 0 };
-    cur.qty += it.qty;
-    cur.revenue_cents += it.qty * it.unit_price_cents;
-    soldByProduct.set(it.product_id, cur);
-  }
-  const topProducts = (products ?? [])
-    .map((p) => ({
-      id: p.id,
-      title: p.title,
-      category: p.category,
-      price_cents: p.price_cents,
-      unit: p.unit,
-      stock: p.stock,
-      sold: soldByProduct.get(p.id)?.qty ?? 0,
-      revenue_cents: soldByProduct.get(p.id)?.revenue_cents ?? 0,
-    }))
-    .sort((a, b) => b.sold - a.sold)
-    .slice(0, 8);
-
-  // Gardens with owner (exclude admin-owned gardens from farmer view)
-  const farmerGardens = (gardens ?? []).filter((g) => !adminIds.has(g.user_id));
-  const gardensList = farmerGardens.slice(0, 50).map((g) => {
-    const pl = plotsByUser.get(g.user_id);
-    return {
-      id: g.id,
-      name: g.name,
-      location: g.location || profileById.get(g.user_id)?.village || "—",
-      owner: profileById.get(g.user_id)?.full_name || "Farmer",
-      size_sqm: g.size_sqm,
-      crops: pl ? [...pl.crops].slice(0, 4) : [],
-      growing: pl?.growing ?? 0,
-    };
-  });
-
-  // Consulting queue with farmer name
-  const consultingQueue = (consulting ?? []).slice(0, 10).map((c) => ({
-    id: c.id,
-    farmer: profileById.get(c.user_id)?.full_name || "Farmer",
-    question: c.question,
-    crop: c.crop || "—",
-    replied: !!c.replied_at,
-    reply: c.reply,
-    created_at: c.created_at,
-  }));
-
-  // Learning progress rollup
-  const certsByModule = new Map<string, number>();
-  for (const c of certificates ?? []) certsByModule.set(c.module_id, (certsByModule.get(c.module_id) ?? 0) + 1);
-  const learning = (modules ?? []).map((m) => ({
-    id: m.id,
-    title: m.title,
-    issued: certsByModule.get(m.id) ?? 0,
-  }));
-
-  // Signups over last 7 days
-  const now = Date.now();
-  const days: { day: string; count: number }[] = [];
-  for (let i = 6; i >= 0; i--) {
-    const dayStart = new Date(now - i * 86400000);
-    dayStart.setHours(0, 0, 0, 0);
-    const dayEnd = dayStart.getTime() + 86400000;
-    const count = farmerProfiles.filter((p) => {
-      const t = new Date(p.created_at).getTime();
-      return t >= dayStart.getTime() && t < dayEnd;
-    }).length;
-    days.push({ day: dayStart.toLocaleDateString(undefined, { weekday: "short" }), count });
-  }
-
-  return {
-    kpis: {
-      farmers: farmerProfiles.length,
-      onboarded: farmerProfiles.filter((p) => p.onboarded).length,
-      gardens: farmerGardens.length,
-      plots_growing: (plots ?? []).filter((p) => p.status === "growing").length,
-      diagnoses: farmerDiagnoses.length,
-      orders: farmerOrders.length,
-      gmv_cents: gmv,
-      wallet_total_cents: walletTotal,
-      payouts_cents: payouts,
-      certificates: certificates?.length ?? 0,
-      consulting_open: (consulting ?? []).filter((c) => !c.replied_at).length,
-    },
-    farmers,
-    recentDiagnoses,
-    topDiseases,
-    regions,
-    recentOrders,
-    topProducts,
-    gardensList,
-    consultingQueue,
-    learning,
-    signups7d: days,
-  };
-});
 
 // ---------- Admin: impersonation / farmer detail ----------
 
 export const getFarmerDetail = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
   .inputValidator((i: unknown) => z.object({ user_id: z.string().uuid() }).parse(i))
-  .handler(async ({ data, context }) => {
+  .handler(async ({ data, context }): Promise<any> => {
     await assertAdmin(context);
-    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-    const uid = data.user_id;
-    const [
-      { data: profile },
-      { data: gardens },
-      { data: plots },
-      { data: diagnoses },
-      { data: txs },
-      { data: orders },
-      { data: orderItems },
-      { data: consulting },
-      { data: certificates },
-      { data: modules },
-    ] = await Promise.all([
-      supabaseAdmin.from("profiles").select("*").eq("id", uid).maybeSingle(),
-      supabaseAdmin.from("gardens").select("*").eq("user_id", uid).order("created_at", { ascending: false }),
-      supabaseAdmin.from("plots").select("*").eq("user_id", uid).order("created_at", { ascending: false }),
-      supabaseAdmin.from("diagnoses").select("*").eq("user_id", uid).order("created_at", { ascending: false }).limit(20),
-      supabaseAdmin.from("wallet_transactions").select("*").eq("user_id", uid).order("created_at", { ascending: false }).limit(30),
-      supabaseAdmin.from("orders").select("*").eq("buyer_id", uid).order("created_at", { ascending: false }).limit(20),
-      supabaseAdmin.from("order_items").select("*"),
-      supabaseAdmin.from("consulting_requests").select("*").eq("user_id", uid).order("created_at", { ascending: false }).limit(20),
-      supabaseAdmin.from("certificates").select("*").eq("user_id", uid),
-      supabaseAdmin.from("learning_modules").select("id, title"),
-    ]);
-
-    const balance = (txs ?? []).reduce(
-      (s, t) => (t.kind === "credit" ? s + t.amount_cents : s - t.amount_cents),
-      0,
-    );
-
-    const orderIds = new Set((orders ?? []).map((o) => o.id));
-    const itemsByOrder = new Map<string, { title: string; qty: number; unit_price_cents: number }[]>();
-    for (const it of orderItems ?? []) {
-      if (!orderIds.has(it.order_id)) continue;
-      const list = itemsByOrder.get(it.order_id) ?? [];
-      list.push({ title: it.title, qty: it.qty, unit_price_cents: it.unit_price_cents });
-      itemsByOrder.set(it.order_id, list);
-    }
-    const enrichedOrders = (orders ?? []).map((o) => ({
-      ...o,
-      items: itemsByOrder.get(o.id) ?? [],
-    }));
-
-    const modTitle = new Map((modules ?? []).map((m) => [m.id, m.title]));
-    const enrichedCerts = (certificates ?? []).map((c) => ({
-      ...c,
-      module_title: modTitle.get(c.module_id) ?? "Module",
-    }));
-
-    // Signed URLs for diagnosis photos
-    const diagnosesWithUrls = await Promise.all(
-      (diagnoses ?? []).map(async (d) => {
-        const { data: signed } = await supabaseAdmin.storage
-          .from("crop-photos")
-          .createSignedUrl(d.photo_path, 60 * 30);
-        return { ...d, photo_url: signed?.signedUrl ?? null };
-      }),
-    );
-
-    return {
-      profile,
-      wallet_cents: balance,
-      gardens: gardens ?? [],
-      plots: plots ?? [],
-      diagnoses: diagnosesWithUrls,
-      transactions: txs ?? [],
-      orders: enrichedOrders,
-      consulting: consulting ?? [],
-      certificates: enrichedCerts,
-    };
+    return await callAdmin("farmer_detail", { user_id: data.user_id });
   });
 
 // ---------- User CRUD: profile & gardens ----------
@@ -1004,22 +689,11 @@ export const adminTopUpWallet = createServerFn({ method: "POST" })
   )
   .handler(async ({ data, context }) => {
     await assertAdmin(context);
-    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-    // Validate farmer exists
-    const { data: farmer } = await supabaseAdmin.from("profiles").select("id").eq("id", data.user_id).maybeSingle();
-    if (!farmer) throw new Error("Farmer not found");
-    const { error } = await supabaseAdmin.from("wallet_transactions").insert({
+    return await callAdmin("wallet_top_up", {
       user_id: data.user_id,
-      kind: "credit",
       amount_cents: data.amount_cents,
-      reason: data.reason || "Admin wallet top-up",
+      reason: data.reason ?? null,
     });
-    if (error) throw new Error(error.message);
-    await logAdmin(context.userId, "wallet.top_up", "user", data.user_id, {
-      amount_cents: data.amount_cents,
-      reason: data.reason || "Admin wallet top-up",
-    });
-    return { ok: true };
   });
 
 export const adminDeleteFarmer = createServerFn({ method: "POST" })
@@ -1028,22 +702,7 @@ export const adminDeleteFarmer = createServerFn({ method: "POST" })
   .handler(async ({ data, context }) => {
     await assertAdmin(context);
     if (data.user_id === context.userId) throw new Error("Admins cannot delete their own account");
-    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-    const uid = data.user_id;
-    // FK ON DELETE CASCADE handles the rest — order_items still need cleanup because
-    // they hang off orders, which cascade themselves. Keeping an explicit sweep for safety.
-    const { data: orders } = await supabaseAdmin.from("orders").select("id").eq("buyer_id", uid);
-    const orderIds = (orders ?? []).map((o) => o.id);
-    if (orderIds.length) await supabaseAdmin.from("order_items").delete().in("order_id", orderIds);
-    try {
-      await supabaseAdmin.auth.admin.deleteUser(uid);
-    } catch (e) {
-      console.error("auth.admin.deleteUser failed", e);
-      // Fallback: if auth delete fails, remove profile so cascades still fire on public rows.
-      await supabaseAdmin.from("profiles").delete().eq("id", uid);
-    }
-    await logAdmin(context.userId, "farmer.delete", "user", uid, null);
-    return { ok: true };
+    return await callAdmin("farmer_delete", { user_id: data.user_id });
   });
 
 export const adminDeleteGarden = createServerFn({ method: "POST" })
@@ -1051,17 +710,7 @@ export const adminDeleteGarden = createServerFn({ method: "POST" })
   .inputValidator((i: unknown) => z.object({ id: z.string().uuid() }).parse(i))
   .handler(async ({ data, context }) => {
     await assertAdmin(context);
-    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-    const { data: plots } = await supabaseAdmin.from("plots").select("id").eq("garden_id", data.id);
-    const plotIds = (plots ?? []).map((p) => p.id);
-    if (plotIds.length) {
-      await supabaseAdmin.from("garden_events").delete().in("plot_id", plotIds);
-      await supabaseAdmin.from("plots").delete().in("id", plotIds);
-    }
-    const { error } = await supabaseAdmin.from("gardens").delete().eq("id", data.id);
-    if (error) throw new Error(error.message);
-    await logAdmin(context.userId, "garden.delete", "garden", data.id, null);
-    return { ok: true };
+    return await callAdmin("garden_delete", { id: data.id });
   });
 
 export const adminUpdateGarden = createServerFn({ method: "POST" })
@@ -1078,12 +727,7 @@ export const adminUpdateGarden = createServerFn({ method: "POST" })
   )
   .handler(async ({ data, context }) => {
     await assertAdmin(context);
-    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-    const { id, ...patch } = data;
-    const { error } = await supabaseAdmin.from("gardens").update(patch).eq("id", id);
-    if (error) throw new Error(error.message);
-    await logAdmin(context.userId, "garden.update", "garden", id, patch);
-    return { ok: true };
+    return await callAdmin("garden_update", data as unknown as Record<string, unknown>);
   });
 
 export const getSellEligibility = createServerFn({ method: "GET" })
@@ -1110,36 +754,9 @@ export const getSellEligibility = createServerFn({ method: "GET" })
 
 export const listAdminAudit = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
-  .handler(async ({ context }) => {
+  .handler(async ({ context }): Promise<any> => {
     await assertAdmin(context);
-    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-    const [{ data: rows }, { data: profiles }, { data: gardens }] = await Promise.all([
-      supabaseAdmin.from("admin_audit_log").select("*").order("created_at", { ascending: false }).limit(200),
-      supabaseAdmin.from("profiles").select("id, full_name"),
-      supabaseAdmin.from("gardens").select("id, name, user_id"),
-    ]);
-    const byId = new Map((profiles ?? []).map((p) => [p.id, p.full_name || "Admin"]));
-    const gardenById = new Map((gardens ?? []).map((g) => [g.id, g] as const));
-    return (rows ?? []).map((r) => {
-      let target_name: string | null = null;
-      let target_owner_id: string | null = null;
-      if (r.target_type === "user" && r.target_id) {
-        target_name = byId.get(r.target_id) || null;
-        target_owner_id = r.target_id;
-      } else if (r.target_type === "garden" && r.target_id) {
-        const g = gardenById.get(r.target_id);
-        if (g) {
-          target_name = g.name;
-          target_owner_id = g.user_id;
-        }
-      }
-      return {
-        ...r,
-        admin_name: byId.get(r.admin_id) || "Admin",
-        target_name,
-        target_owner_id,
-      };
-    });
+    return await callAdmin("audit_list");
   });
 
 export const checkIsAdmin = createServerFn({ method: "GET" })
@@ -1155,51 +772,13 @@ export const checkIsAdmin = createServerFn({ method: "GET" })
   });
 
 export const hasAnyAdmin = createServerFn({ method: "GET" }).handler(async () => {
-  const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-  const { count } = await supabaseAdmin
-    .from("user_roles")
-    .select("user_id", { count: "exact", head: true })
-    .eq("role", "admin");
-  return { has_any: (count ?? 0) > 0 };
+  return await callAdmin("hasAnyAdmin");
 });
 
 export const claimAdmin = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .handler(async ({ context }) => {
-    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-    // Guard against stale JWTs pointing at a deleted auth.users row
-    const { data: userLookup, error: ulErr } = await supabaseAdmin.auth.admin.getUserById(context.userId);
-    if (ulErr || !userLookup?.user) {
-      throw new Error("Your session is stale. Please sign out and sign in again with a fresh account.");
-    }
-    const { count, error: ce } = await supabaseAdmin
-      .from("user_roles")
-      .select("user_id", { count: "exact", head: true })
-      .eq("role", "admin");
-    if (ce) throw new Error(ce.message);
-    const hasAny = (count ?? 0) > 0;
-    if (hasAny) {
-      const { data: mine } = await supabaseAdmin
-        .from("user_roles")
-        .select("role")
-        .eq("user_id", context.userId)
-        .eq("role", "admin")
-        .maybeSingle();
-      return { is_admin: !!mine };
-    }
-    // Ensure a profile row exists (trigger may not have fired for pre-existing users)
-    await supabaseAdmin
-      .from("profiles")
-      .upsert(
-        { id: context.userId, full_name: userLookup.user.user_metadata?.full_name ?? userLookup.user.email?.split("@")[0] ?? "Admin", onboarded: true },
-        { onConflict: "id" },
-      );
-    const { error: ie } = await supabaseAdmin
-      .from("user_roles")
-      .insert({ user_id: context.userId, role: "admin" });
-    if (ie) throw new Error(ie.message);
-    await logAdmin(context.userId, "admin.claimed", "user", context.userId, null);
-    return { is_admin: true };
+  .handler(async () => {
+    return await callAdmin("claim_admin");
   });
 
 // ---------- Farmer: harvest history + water reminders ----------
@@ -1281,18 +860,9 @@ export const getMobileAccess = createServerFn({ method: "GET" })
 
 export const adminListProducts = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
-  .handler(async ({ context }) => {
+  .handler(async ({ context }): Promise<any> => {
     await assertAdmin(context);
-    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-    const [{ data: products }, { data: profiles }] = await Promise.all([
-      supabaseAdmin.from("products").select("*").order("created_at", { ascending: false }),
-      supabaseAdmin.from("profiles").select("id, full_name"),
-    ]);
-    const byId = new Map((profiles ?? []).map((p) => [p.id, p.full_name || "Farmer"]));
-    return (products ?? []).map((p) => ({
-      ...p,
-      seller_name: p.seller_id ? byId.get(p.seller_id) ?? "Farmer" : "Platform (Admin)",
-    }));
+    return await callAdmin("product_list_admin");
   });
 
 export const adminCreateListing = createServerFn({ method: "POST" })
@@ -1311,28 +881,7 @@ export const adminCreateListing = createServerFn({ method: "POST" })
   )
   .handler(async ({ data, context }) => {
     await assertAdmin(context);
-    const hay = `${data.title} ${data.category} ${data.description}`.toLowerCase();
-    if (!hay.includes("ginger")) {
-      throw new Error("Marketplace only accepts ginger and ginger-related products.");
-    }
-    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-    const { data: row, error } = await supabaseAdmin
-      .from("products")
-      .insert({
-        seller_id: null,
-        title: data.title,
-        category: data.category,
-        description: data.description,
-        price_cents: data.price_cents,
-        unit: data.unit,
-        stock: data.stock,
-        is_seed: false,
-      })
-      .select()
-      .single();
-    if (error) throw new Error(error.message);
-    await logAdmin(context.userId, "product.create", "product", row.id, { title: row.title });
-    return row;
+    return await callAdmin("product_create_admin", data as unknown as Record<string, unknown>);
   });
 
 export const adminUpdateListing = createServerFn({ method: "POST" })
@@ -1350,12 +899,7 @@ export const adminUpdateListing = createServerFn({ method: "POST" })
   )
   .handler(async ({ data, context }) => {
     await assertAdmin(context);
-    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-    const { id, ...patch } = data;
-    const { error } = await supabaseAdmin.from("products").update(patch).eq("id", id);
-    if (error) throw new Error(error.message);
-    await logAdmin(context.userId, "product.update", "product", id, patch);
-    return { ok: true };
+    return await callAdmin("product_update_admin", data as unknown as Record<string, unknown>);
   });
 
 export const adminDeleteListing = createServerFn({ method: "POST" })
@@ -1363,48 +907,16 @@ export const adminDeleteListing = createServerFn({ method: "POST" })
   .inputValidator((i: unknown) => z.object({ id: z.string().uuid() }).parse(i))
   .handler(async ({ data, context }) => {
     await assertAdmin(context);
-    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-    const { error } = await supabaseAdmin.from("products").delete().eq("id", data.id);
-    if (error) throw new Error(error.message);
-    await logAdmin(context.userId, "product.delete", "product", data.id, null);
-    return { ok: true };
+    return await callAdmin("product_delete_admin", { id: data.id });
   });
 
 // ---------- Admin: admin-user CRUD ----------
 
 export const adminListAdmins = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
-  .handler(async ({ context }) => {
+  .handler(async ({ context }): Promise<any> => {
     await assertAdmin(context);
-    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-    const { data: roles } = await supabaseAdmin.from("user_roles").select("user_id, created_at").eq("role", "admin");
-    const ids = (roles ?? []).map((r) => r.user_id);
-    if (ids.length === 0) return [];
-    const sorted = [...(roles ?? [])].sort(
-      (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime(),
-    );
-    const firstAdminId = sorted[0]?.user_id ?? null;
-    const { data: profiles } = await supabaseAdmin.from("profiles").select("id, full_name").in("id", ids);
-    const nameById = new Map((profiles ?? []).map((p) => [p.id, p.full_name || "Admin"]));
-    // Get emails via auth admin API
-    const rows = await Promise.all(
-      (roles ?? []).map(async (r) => {
-        let email: string | null = null;
-        try {
-          const { data } = await supabaseAdmin.auth.admin.getUserById(r.user_id);
-          email = data.user?.email ?? null;
-        } catch {}
-        return {
-          user_id: r.user_id,
-          full_name: nameById.get(r.user_id) ?? "Admin",
-          email,
-          created_at: r.created_at,
-          is_self: r.user_id === context.userId,
-          is_first: r.user_id === firstAdminId,
-        };
-      }),
-    );
-    return rows;
+    return await callAdmin("admin_list");
   });
 
 export const adminCreateAdmin = createServerFn({ method: "POST" })
@@ -1414,23 +926,7 @@ export const adminCreateAdmin = createServerFn({ method: "POST" })
   )
   .handler(async ({ data, context }) => {
     await assertAdmin(context);
-    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-    const { data: created, error } = await supabaseAdmin.auth.admin.createUser({
-      email: data.email,
-      password: data.password,
-      email_confirm: true,
-      user_metadata: { full_name: data.full_name },
-    });
-    if (error || !created.user) throw new Error(error?.message ?? "Failed to create user");
-    const uid = created.user.id;
-    // Ensure profile exists (trigger may or may not have fired)
-    await supabaseAdmin
-      .from("profiles")
-      .upsert({ id: uid, full_name: data.full_name, onboarded: true }, { onConflict: "id" });
-    const { error: re } = await supabaseAdmin.from("user_roles").insert({ user_id: uid, role: "admin" });
-    if (re) throw new Error(re.message);
-    await logAdmin(context.userId, "admin.create", "user", uid, { email: data.email });
-    return { ok: true, user_id: uid };
+    return await callAdmin("admin_create", data as unknown as Record<string, unknown>);
   });
 
 export const adminDeleteAdmin = createServerFn({ method: "POST" })
@@ -1438,25 +934,5 @@ export const adminDeleteAdmin = createServerFn({ method: "POST" })
   .inputValidator((i: unknown) => z.object({ user_id: z.string().uuid() }).parse(i))
   .handler(async ({ data, context }) => {
     await assertAdmin(context);
-    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-    // Protect the first admin ever created — the root account cannot be removed.
-    const { data: roles } = await supabaseAdmin
-      .from("user_roles")
-      .select("user_id, created_at")
-      .eq("role", "admin")
-      .order("created_at", { ascending: true })
-      .limit(1);
-    const firstAdminId = roles?.[0]?.user_id ?? null;
-    if (firstAdminId && data.user_id === firstAdminId) {
-      throw new Error("The first admin account cannot be deleted.");
-    }
-    try {
-      await supabaseAdmin.auth.admin.deleteUser(data.user_id);
-    } catch (e) {
-      console.error("auth.admin.deleteUser failed", e);
-      await supabaseAdmin.from("user_roles").delete().eq("user_id", data.user_id);
-      await supabaseAdmin.from("profiles").delete().eq("id", data.user_id);
-    }
-    await logAdmin(context.userId, "admin.delete", "user", data.user_id, null);
-    return { ok: true };
+    return await callAdmin("admin_delete", { user_id: data.user_id });
   });
